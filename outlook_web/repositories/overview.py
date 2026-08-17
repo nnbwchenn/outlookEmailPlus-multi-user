@@ -53,15 +53,21 @@ def _action_group(action: str) -> str:
     return "other"
 
 
-def get_overview_summary(conn: sqlite3.Connection | None = None) -> dict[str, Any]:
+def get_overview_summary(conn: sqlite3.Connection | None = None, *, owner_user_id: int | None = None) -> dict[str, Any]:
     # 概览大盘入口：聚合账号状态、邮箱池快照、刷新健康度、今日 KPI，供前端 dashboard 一次性加载
+    # owner_user_id 传入时仅统计该用户名下账号（多用户数据隔离）
     db = _db(conn)
+    owner_cond = " WHERE owner_user_id = ?" if owner_user_id is not None else ""
 
-    account_rows = db.execute("""
+    account_rows = db.execute(
+        f"""
         SELECT COALESCE(status, '') AS status, COUNT(*) AS cnt
         FROM accounts
+        {owner_cond}
         GROUP BY COALESCE(status, '')
-        """).fetchall()
+        """,
+        (owner_user_id,) if owner_user_id is not None else (),
+    ).fetchall()
     account_status = {
         "total": 0,
         "active": 0,
@@ -82,12 +88,16 @@ def get_overview_summary(conn: sqlite3.Connection | None = None) -> dict[str, An
         elif status in {"error", "failed"}:
             account_status["error"] += count
 
-    pool_rows = db.execute("""
+    pool_owner_cond = " AND owner_user_id = ?" if owner_user_id is not None else ""
+    pool_rows = db.execute(
+        f"""
         SELECT COALESCE(pool_status, '') AS pool_status, COUNT(*) AS cnt
         FROM accounts
-        WHERE pool_status IS NOT NULL
+        WHERE pool_status IS NOT NULL{pool_owner_cond}
         GROUP BY COALESCE(pool_status, '')
-        """).fetchall()
+        """,
+        (owner_user_id,) if owner_user_id is not None else (),
+    ).fetchall()
     pool_snapshot = {
         "available": 0,
         "in_use": 0,
@@ -137,14 +147,25 @@ def get_overview_summary(conn: sqlite3.Connection | None = None) -> dict[str, An
         duration_seconds = int(duration_row["duration_s"] or 0) if duration_row else 0
 
     today_start = int(datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0).timestamp())
-    today_logs = db.execute(
-        """
-        SELECT COUNT(*) AS verification_count
-        FROM verification_extract_logs
-        WHERE started_at >= ?
-        """,
-        (today_start,),
-    ).fetchone()
+    if owner_user_id is not None:
+        today_logs = db.execute(
+            """
+            SELECT COUNT(*) AS verification_count
+            FROM verification_extract_logs AS vel
+            JOIN accounts AS a ON vel.account_id > 0 AND a.id = vel.account_id
+            WHERE vel.started_at >= ? AND a.owner_user_id = ?
+            """,
+            (today_start, owner_user_id),
+        ).fetchone()
+    else:
+        today_logs = db.execute(
+            """
+            SELECT COUNT(*) AS verification_count
+            FROM verification_extract_logs
+            WHERE started_at >= ?
+            """,
+            (today_start,),
+        ).fetchone()
 
     return {
         "account_status": account_status,
@@ -170,21 +191,37 @@ def get_verification_stats(
     *,
     days: int = 7,
     recent_limit: int = 10,
+    owner_user_id: int | None = None,
 ) -> dict[str, Any]:
     # 验证码提取统计：汇总成功率、渠道分布、AI 增强效果、P95 延迟，支持运营洞察
+    # owner_user_id 传入时仅统计该用户名下账号的提取记录
     db = _db(conn)
     cutoff = time.time() - max(int(days), 1) * 86400
 
-    rows = db.execute(
-        """
-        SELECT id, account_id, channel, started_at, finished_at, duration_ms, result_type,
-               code_found, used_ai, error_code, trace_id
-        FROM verification_extract_logs
-        WHERE started_at >= ?
-        ORDER BY started_at DESC, id DESC
-        """,
-        (cutoff,),
-    ).fetchall()
+    if owner_user_id is not None:
+        rows = db.execute(
+            """
+            SELECT vel.id, vel.account_id, vel.channel, vel.started_at, vel.finished_at,
+                   vel.duration_ms, vel.result_type, vel.code_found, vel.used_ai,
+                   vel.error_code, vel.trace_id
+            FROM verification_extract_logs AS vel
+            JOIN accounts AS a ON vel.account_id > 0 AND a.id = vel.account_id
+            WHERE vel.started_at >= ? AND a.owner_user_id = ?
+            ORDER BY vel.started_at DESC, vel.id DESC
+            """,
+            (cutoff, owner_user_id),
+        ).fetchall()
+    else:
+        rows = db.execute(
+            """
+            SELECT id, account_id, channel, started_at, finished_at, duration_ms, result_type,
+                   code_found, used_ai, error_code, trace_id
+            FROM verification_extract_logs
+            WHERE started_at >= ?
+            ORDER BY started_at DESC, id DESC
+            """,
+            (cutoff,),
+        ).fetchall()
 
     total_count = len(rows)
     success_count = sum(1 for row in rows if str(row["result_type"] or "") != "none")
@@ -228,18 +265,33 @@ def get_verification_stats(
         )
     channel_stats.sort(key=lambda item: (-int(item["count"]), item["channel"]))
 
-    recent_rows = db.execute(
-        """
-        SELECT vel.id, vel.started_at, vel.channel, vel.code_found, vel.duration_ms,
-               vel.result_type, vel.used_ai, vel.error_code,
-               COALESCE(a.email, '') AS account_email
-        FROM verification_extract_logs AS vel
-        LEFT JOIN accounts AS a ON vel.account_id > 0 AND a.id = vel.account_id
-        ORDER BY vel.started_at DESC, vel.id DESC
-        LIMIT ?
-        """,
-        (max(int(recent_limit), 1),),
-    ).fetchall()
+    if owner_user_id is not None:
+        recent_rows = db.execute(
+            """
+            SELECT vel.id, vel.started_at, vel.channel, vel.code_found, vel.duration_ms,
+                   vel.result_type, vel.used_ai, vel.error_code,
+                   COALESCE(a.email, '') AS account_email
+            FROM verification_extract_logs AS vel
+            JOIN accounts AS a ON vel.account_id > 0 AND a.id = vel.account_id
+            WHERE a.owner_user_id = ?
+            ORDER BY vel.started_at DESC, vel.id DESC
+            LIMIT ?
+            """,
+            (owner_user_id, max(int(recent_limit), 1)),
+        ).fetchall()
+    else:
+        recent_rows = db.execute(
+            """
+            SELECT vel.id, vel.started_at, vel.channel, vel.code_found, vel.duration_ms,
+                   vel.result_type, vel.used_ai, vel.error_code,
+                   COALESCE(a.email, '') AS account_email
+            FROM verification_extract_logs AS vel
+            LEFT JOIN accounts AS a ON vel.account_id > 0 AND a.id = vel.account_id
+            ORDER BY vel.started_at DESC, vel.id DESC
+            LIMIT ?
+            """,
+            (max(int(recent_limit), 1),),
+        ).fetchall()
     recent = [
         {
             "id": int(row["id"]),

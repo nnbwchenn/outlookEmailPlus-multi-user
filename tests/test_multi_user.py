@@ -13,9 +13,14 @@ class MultiUserBase(unittest.TestCase):
 
     def setUp(self):
         with self.app.app_context():
+            from outlook_web.db import get_db
             from outlook_web.repositories import users as users_repo
 
             clear_login_attempts()
+            # 清理账号（避免测试间统计累积）
+            db = get_db()
+            db.execute("DELETE FROM accounts")
+            db.commit()
             # 确保 admin 存在且密码为 testpass123
             admin = users_repo.get_user_by_username("admin")
             if admin:
@@ -206,3 +211,59 @@ class MemberEmailAccessTests(MultiUserBase):
 
 if __name__ == "__main__":
     unittest.main()
+
+class MemberOverviewIsolationTests(MultiUserBase):
+    """成员数据概览：只统计自己被分配的邮箱"""
+
+    def test_member_summary_only_counts_own_accounts(self):
+        with self.app.test_client() as admin_client:
+            self._login(admin_client)
+            user = self._create_member(admin_client, "ov_member", "memberpass1")
+            # 添加 3 个邮箱：2 个给 member，1 个留在管理员全局
+            acc_ids = []
+            for i in range(3):
+                email = f"ov{i}@test.com"
+                self._add_account(admin_client, email)
+                with self.app.app_context():
+                    from outlook_web.repositories import accounts as accounts_repo
+
+                    acc = accounts_repo.get_account_by_email(email)
+                    if acc:
+                        acc_ids.append(acc["id"])
+            # 分配前 2 个给 member
+            admin_client.post(
+                "/api/users/assign",
+                json={"owner_user_id": user["id"], "account_ids": acc_ids[:2]},
+            )
+
+        with self.app.test_client() as member_client:
+            self._login(member_client, "ov_member", "memberpass1")
+            # OverviewAwareFlaskClient 会清空 overview 请求的 cookie，需显式带上会话 Cookie
+            cookie = "; ".join(f"{k}={v}" for k, v in member_client._cookies.items())
+            resp = member_client.get("/api/overview/summary", headers={"Cookie": cookie})
+            self.assertEqual(resp.status_code, 200)
+            summary = resp.get_json()
+            account_status = summary.get("account_status") or {}
+            self.assertEqual(account_status.get("total"), 2, summary)
+
+        with self.app.test_client() as admin_client2:
+            self._login(admin_client2)
+            cookie2 = "; ".join(f"{k}={v}" for k, v in admin_client2._cookies.items())
+            resp = admin_client2.get("/api/overview/summary", headers={"Cookie": cookie2})
+            summary = resp.get_json()
+            account_status = summary.get("account_status") or {}
+            self.assertEqual(account_status.get("total"), 3, summary)
+
+    def test_member_pool_stats_empty(self):
+        with self.app.test_client() as admin_client:
+            self._login(admin_client)
+            user = self._create_member(admin_client, "ov_member2", "memberpass1")
+
+        with self.app.test_client() as member_client:
+            self._login(member_client, "ov_member2", "memberpass1")
+            cookie = "; ".join(f"{k}={v}" for k, v in member_client._cookies.items())
+            resp = member_client.get("/api/overview/pool", headers={"Cookie": cookie})
+            self.assertEqual(resp.status_code, 200)
+            kpi = resp.get_json().get("kpi") or {}
+            self.assertEqual(kpi.get("available"), 0)
+            self.assertEqual(kpi.get("in_use"), 0)

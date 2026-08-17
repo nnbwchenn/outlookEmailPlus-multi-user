@@ -4,7 +4,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    image: outlook-email-plus:local
+    image: outlook-email-plus:multi-user
 
     container_name: outlook-email-plus
 

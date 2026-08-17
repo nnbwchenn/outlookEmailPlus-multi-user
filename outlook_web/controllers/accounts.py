@@ -2374,6 +2374,7 @@ def api_trigger_scheduled_refresh() -> Any:
 
 
 @login_required
+@admin_required
 def api_get_refresh_logs() -> Any:
     """获取所有账号的刷新历史（近半年）"""
     db = get_db()
@@ -2458,6 +2459,7 @@ def api_get_account_refresh_logs(account_id: int) -> Any:
 
 
 @login_required
+@admin_required
 def api_get_failed_refresh_logs() -> Any:
     """获取所有失败的刷新记录"""
     db = get_db()
@@ -2495,6 +2497,7 @@ def api_get_failed_refresh_logs() -> Any:
 
 
 @login_required
+@admin_required
 def api_get_invalid_token_candidates() -> Any:
     """获取最近一次刷新失败且命中 invalid token 判定的候选账号列表。"""
     db = get_db()
@@ -2572,6 +2575,7 @@ def api_get_invalid_token_candidates() -> Any:
 
 
 @login_required
+@admin_required
 def api_get_refresh_stats() -> Any:
     """获取刷新统计信息（统计当前失败状态的邮箱数量）"""
     db = get_db()

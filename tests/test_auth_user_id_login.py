@@ -37,7 +37,7 @@ class TestLoginRequiredUserIdScenarios(unittest.TestCase):
         client = self.app.test_client()
         self._set_session(client, logged_in=True)
 
-        resp = client.get("/api/system/health")
+        resp = client.get("/api/bootstrap")
         self.assertEqual(resp.status_code, 200, "logged_in=True 应通过认证")
 
     def test_only_user_id_should_pass(self):
@@ -45,7 +45,7 @@ class TestLoginRequiredUserIdScenarios(unittest.TestCase):
         client = self.app.test_client()
         self._set_session(client, user_id=1)
 
-        resp = client.get("/api/system/health")
+        resp = client.get("/api/bootstrap")
         self.assertEqual(resp.status_code, 200, "仅有 user_id=1 应通过认证")
 
     def test_both_logged_in_and_user_id_should_pass(self):
@@ -53,14 +53,14 @@ class TestLoginRequiredUserIdScenarios(unittest.TestCase):
         client = self.app.test_client()
         self._set_session(client, logged_in=True, user_id=1)
 
-        resp = client.get("/api/system/health")
+        resp = client.get("/api/bootstrap")
         self.assertEqual(resp.status_code, 200, "同时存在 logged_in 和 user_id 应通过认证")
 
     def test_neither_logged_in_nor_user_id_should_reject(self):
         """session 中既无 logged_in 也无 user_id 时，应拒绝认证（返回 401）"""
         client = self.app.test_client()
 
-        resp = client.get("/api/system/health")
+        resp = client.get("/api/bootstrap")
         self.assertEqual(resp.status_code, 401, "缺少 logged_in 和 user_id 应返回 401")
         data = resp.get_json()
         self.assertFalse(data.get("success"))
@@ -72,7 +72,7 @@ class TestLoginRequiredUserIdScenarios(unittest.TestCase):
         client = self.app.test_client()
         self._set_session(client, logged_in=False, user_id=1)
 
-        resp = client.get("/api/system/health")
+        resp = client.get("/api/bootstrap")
         self.assertEqual(resp.status_code, 200, "logged_in=False 但 user_id=1 应通过认证")
 
 

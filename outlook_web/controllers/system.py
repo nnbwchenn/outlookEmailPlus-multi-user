@@ -19,7 +19,7 @@ from outlook_web.db import (
 )
 from outlook_web.repositories import accounts as accounts_repo
 from outlook_web.repositories import settings as settings_repo
-from outlook_web.security.auth import api_key_required, login_required
+from outlook_web.security.auth import admin_required, api_key_required, login_required
 from outlook_web.security.external_api_guard import external_api_guards
 from outlook_web.services import external_api as external_api_service
 from outlook_web.services.scheduler import REFRESH_LOCK_NAME
@@ -103,6 +103,7 @@ def healthz() -> Any:
 
 
 @login_required
+@admin_required
 def api_system_health() -> Any:
     """管理员健康检查：可服务/可刷新状态概览"""
     conn = create_sqlite_connection()
@@ -177,6 +178,7 @@ def api_system_health() -> Any:
 
 
 @login_required
+@admin_required
 def api_system_diagnostics() -> Any:
     """管理员诊断信息：关键状态一致性/过期清理可见性"""
     conn = create_sqlite_connection()
@@ -264,6 +266,7 @@ def api_system_diagnostics() -> Any:
 
 
 @login_required
+@admin_required
 def api_system_upgrade_status() -> Any:
     """数据库升级状态（用于验收"升级过程可验证/失败可定位"）"""
     from outlook_web import config as app_config

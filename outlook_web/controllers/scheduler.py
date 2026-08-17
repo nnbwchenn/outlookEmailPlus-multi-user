@@ -10,7 +10,7 @@ from flask import jsonify
 from outlook_web import config
 from outlook_web.db import create_sqlite_connection
 from outlook_web.repositories import settings as settings_repo
-from outlook_web.security.auth import login_required
+from outlook_web.security.auth import admin_required, login_required
 from outlook_web.services.scheduler import REFRESH_LOCK_NAME
 
 
@@ -23,6 +23,7 @@ def utcnow() -> datetime:
 
 
 @login_required
+@admin_required
 def api_get_scheduler_status() -> Any:
     """获取调度器/定时刷新状态（用于验证"看起来已开启但实际未运行"的问题）"""
     conn = create_sqlite_connection()

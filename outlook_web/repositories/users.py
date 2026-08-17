@@ -64,12 +64,10 @@ def verify_user_credentials(username: str, password: str) -> dict[str, Any] | No
 def list_users() -> list[dict[str, Any]]:
     """列出所有用户（不含密码哈希）。"""
     db = _conn()
-    rows = db.execute(
-        """
+    rows = db.execute("""
         SELECT id, username, role, display_name, status, created_at
         FROM users ORDER BY id ASC
-        """
-    ).fetchall()
+        """).fetchall()
     return [dict(r) for r in rows]
 
 

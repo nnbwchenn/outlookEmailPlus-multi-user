@@ -580,5 +580,3 @@ def get_stats(conn: sqlite3.Connection) -> dict:
             pool_counts[key] = row["cnt"]
 
     return {"pool_counts": pool_counts}
-
-

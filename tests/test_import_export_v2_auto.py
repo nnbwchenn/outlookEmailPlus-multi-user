@@ -403,5 +403,6 @@ class ImportExportV2AutoTests(unittest.TestCase):
         outlook_gid = self._get_group_id_by_name("Outlook")
         self.assertEqual(int(row["group_id"]), outlook_gid)
 
+
 if __name__ == "__main__":
     unittest.main()

@@ -212,6 +212,7 @@ class MemberEmailAccessTests(MultiUserBase):
 if __name__ == "__main__":
     unittest.main()
 
+
 class MemberOverviewIsolationTests(MultiUserBase):
     """成员数据概览：只统计自己被分配的邮箱"""
 

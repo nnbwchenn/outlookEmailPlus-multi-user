@@ -499,9 +499,7 @@ def init_db(database_path: str | None = None):
 
         # v25: 把 login_password 迁移为 admin 用户（密码保持不变，仅首次迁移）
         pw_row = cursor.execute("SELECT value FROM settings WHERE key = 'login_password'").fetchone()
-        admin_exists = cursor.execute(
-            "SELECT id FROM users WHERE username = 'admin' LIMIT 1"
-        ).fetchone()
+        admin_exists = cursor.execute("SELECT id FROM users WHERE username = 'admin' LIMIT 1").fetchone()
         if pw_row and pw_row[0] and not admin_exists:
             stored_hash = pw_row[0]
             # 兼容：如果还是明文（理论上 init 时已哈希），此处兜底哈希
@@ -1018,13 +1016,11 @@ def init_db(database_path: str | None = None):
         cursor.execute("DROP TABLE IF EXISTS temp_email_messages")
         cursor.execute("DROP TABLE IF EXISTS temp_emails")
         # 清理历史遗留的临时邮箱系统分组：先将其中的账号归入默认分组，再删除分组
-        cursor.execute(
-            """
+        cursor.execute("""
             UPDATE accounts
             SET group_id = (SELECT id FROM groups WHERE name = '默认分组' LIMIT 1)
             WHERE group_id = (SELECT id FROM groups WHERE name = '临时邮箱' LIMIT 1)
-            """
-        )
+            """)
         cursor.execute("DELETE FROM groups WHERE name = '临时邮箱'")
 
         # 升级完成标记：写入 schema 版本，便于“升级可验证”

@@ -8,6 +8,7 @@ from flask import jsonify
 from outlook_web.repositories import overview as overview_repo
 from outlook_web.security.auth import get_current_user, login_required
 
+
 # ==================== 概览 summary 进程级 TTL 缓存 ====================
 # summary 是 dashboard 首屏加载的聚合查询（6 条 SQL），
 # 在单 sync worker 下频繁刷新会加重排队。30 秒 TTL 兼顾数据实时性与请求降频。
@@ -59,8 +60,23 @@ def api_get_overview_pool() -> Any:
     if _get_owner_scope() is not None:
         return jsonify(
             {
-                "kpi": {"available": 0, "in_use": 0, "cooldown": 0, "used": 0, "max_claimed_duration_s": 0, "claim_count_7d": 0, "complete_success_rate": 0},
-                "operation_distribution": {"claim": 0, "complete": 0, "complete_success": 0, "complete_fail": 0, "release": 0, "expire": 0},
+                "kpi": {
+                    "available": 0,
+                    "in_use": 0,
+                    "cooldown": 0,
+                    "used": 0,
+                    "max_claimed_duration_s": 0,
+                    "claim_count_7d": 0,
+                    "complete_success_rate": 0,
+                },
+                "operation_distribution": {
+                    "claim": 0,
+                    "complete": 0,
+                    "complete_success": 0,
+                    "complete_fail": 0,
+                    "release": 0,
+                    "expire": 0,
+                },
                 "project_top5": [],
                 "recent_operations": [],
             }

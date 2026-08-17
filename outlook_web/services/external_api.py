@@ -17,9 +17,7 @@ from outlook_web.services import imap as imap_service
 from outlook_web.services import (
     mailbox_resolver,
 )
-from outlook_web.services import (
-    verification_channel_routing as verification_channel_service,
-)
+from outlook_web.services import verification_channel_routing as verification_channel_service
 from outlook_web.services.imap_generic import (
     get_email_detail_imap_generic_result,
     get_emails_imap_generic,

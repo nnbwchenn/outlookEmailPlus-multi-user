@@ -34,8 +34,6 @@ def create_app(*, autostart_scheduler: bool | None = None):
         from outlook_web.routes import (
             accounts,
             audit,
-            user_notifications as user_notifications_routes,
-            users as users_routes,
             emails,
             external_pool,
             groups,
@@ -47,6 +45,8 @@ def create_app(*, autostart_scheduler: bool | None = None):
             system,
             tags,
         )
+        from outlook_web.routes import user_notifications as user_notifications_routes
+        from outlook_web.routes import users as users_routes
         from outlook_web.security.csrf import init_csrf
 
         # 初始化（DB/目录等）

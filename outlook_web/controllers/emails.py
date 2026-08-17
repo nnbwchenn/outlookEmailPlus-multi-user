@@ -9,9 +9,8 @@ from flask import current_app, jsonify, request
 from outlook_web.audit import log_audit
 from outlook_web.errors import build_error_payload, build_error_response
 from outlook_web.repositories import accounts as accounts_repo
-from outlook_web.security.auth import get_current_user
 from outlook_web.repositories import groups as groups_repo
-from outlook_web.security.auth import api_key_required, login_required
+from outlook_web.security.auth import api_key_required, get_current_user, login_required
 from outlook_web.security.external_api_guard import external_api_guards
 from outlook_web.services import account_compact_summary as compact_summary_service
 from outlook_web.services import email_delete as email_delete_service

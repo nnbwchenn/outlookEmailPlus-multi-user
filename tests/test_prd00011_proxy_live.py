@@ -33,7 +33,7 @@ from _import_app import clear_login_attempts, import_web_app_module
 def _login(client):
     """登录辅助（CSRF 已在测试配置中禁用）"""
     clear_login_attempts()
-    resp = client.post("/login", json={"password": "testpass123"})
+    resp = client.post("/login", json={"username": "admin", "password": "testpass123"})
     return resp.status_code == 200 and resp.get_json().get("success")
 
 

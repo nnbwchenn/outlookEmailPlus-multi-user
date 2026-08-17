@@ -4,11 +4,12 @@ from typing import Any
 
 from flask import jsonify, request
 
-from outlook_web.security.auth import login_required
+from outlook_web.security.auth import admin_required, login_required
 from outlook_web.services import pool_admin as pool_admin_svc
 
 
 @login_required
+@admin_required
 def api_list_accounts() -> Any:
     """GET /api/pool-admin/accounts"""
     in_pool = request.args.get("in_pool", "all")
@@ -49,6 +50,7 @@ def api_list_accounts() -> Any:
 
 
 @login_required
+@admin_required
 def api_account_action(account_id: int) -> Any:
     """POST /api/pool-admin/accounts/<id>/action"""
     data = request.get_json(silent=True) or {}

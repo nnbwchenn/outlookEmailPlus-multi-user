@@ -9,6 +9,7 @@ from flask import current_app, jsonify, request
 from outlook_web.audit import log_audit
 from outlook_web.errors import build_error_payload, build_error_response
 from outlook_web.repositories import accounts as accounts_repo
+from outlook_web.security.auth import get_current_user
 from outlook_web.repositories import groups as groups_repo
 from outlook_web.security.auth import api_key_required, login_required
 from outlook_web.security.external_api_guard import external_api_guards
@@ -34,6 +35,19 @@ _EXTERNAL_NESTED_UPSTREAM_CODES = {
     "IMAP_FOLDER_NOT_FOUND",
 }
 _VERIFICATION_REQUEST_FIELDS = {"code", "link", "any"}
+
+
+def _ensure_email_owned(email_addr: str) -> bool:
+    """校验当前用户能否访问该邮箱（admin 全通过；member 仅自己名下账号）。"""
+    user = get_current_user()
+    if not user:
+        return False
+    if user.get("role") == "admin":
+        return True
+    account = accounts_repo.get_account_by_email(email_addr)
+    if not account:
+        return False
+    return account.get("owner_user_id") == int(user.get("id") or 0)
 
 
 def _expected_field_for_verification_request(field: str) -> str | None:
@@ -114,6 +128,26 @@ def _update_account_summary_from_verification(account: dict[str, Any], data: dic
 
 @login_required
 def api_batch_get_emails() -> Any:
+    user = get_current_user()
+    if user and user.get("role") != "admin":
+        # member 批量拉取仅限自己名下账号
+        payload = request.get_json(silent=True) or {}
+        raw_ids = payload.get("account_ids") or []
+        try:
+            ids = [int(aid) for aid in raw_ids]
+        except (TypeError, ValueError):
+            ids = []
+        owned_ids = []
+        for aid in ids:
+            if accounts_repo.get_account_owner(aid) == int(user.get("id") or 0):
+                owned_ids.append(aid)
+        if raw_ids and not owned_ids:
+            return build_error_response(
+                "ACCOUNT_NOT_FOUND",
+                "账号不存在",
+                message_en="Account not found",
+                status=404,
+            )
     """批量获取邮件（Issue #64 增强项 / Phase 3）。
 
     目标：为前端批量拉取提供服务端聚合能力。
@@ -459,6 +493,13 @@ def api_batch_get_emails() -> Any:
 
 @login_required
 def api_get_emails(email_addr: str) -> Any:
+    if not _ensure_email_owned(email_addr):
+        return build_error_response(
+            "ACCOUNT_NOT_FOUND",
+            "账号不存在",
+            message_en="Account not found",
+            status=404,
+        )
     """获取邮件列表（支持分页，不使用缓存）"""
     _t0 = time.monotonic()
     email_addr = normalize_alias_email(email_addr) or ""
@@ -703,6 +744,15 @@ def api_get_emails(email_addr: str) -> Any:
 
 @login_required
 def api_delete_emails() -> Any:
+    payload = request.get_json(silent=True) or {}
+    target_email = str(payload.get("email") or payload.get("email_addr") or "").strip()
+    if target_email and not _ensure_email_owned(target_email):
+        return build_error_response(
+            "ACCOUNT_NOT_FOUND",
+            "账号不存在",
+            message_en="Account not found",
+            status=404,
+        )
     """批量删除邮件（永久删除）"""
     data = request.json
     email_addr = data.get("email", "")
@@ -768,6 +818,13 @@ def api_delete_emails() -> Any:
 
 @login_required
 def api_get_email_detail(email_addr: str, message_id: str) -> Any:
+    if not _ensure_email_owned(email_addr):
+        return build_error_response(
+            "ACCOUNT_NOT_FOUND",
+            "账号不存在",
+            message_en="Account not found",
+            status=404,
+        )
     """获取邮件详情"""
     _t0 = time.monotonic()
     email_addr = normalize_alias_email(email_addr) or ""
@@ -914,11 +971,25 @@ def api_get_email_detail(email_addr: str, message_id: str) -> Any:
 
 @login_required
 def api_extract_verification(email_addr: str) -> Any:
+    if not _ensure_email_owned(email_addr):
+        return build_error_response(
+            "ACCOUNT_NOT_FOUND",
+            "账号不存在",
+            message_en="Account not found",
+            status=404,
+        )
     return _api_extract_verification_impl(email_addr)
 
 
 @login_required
 def api_get_verification(email_addr: str) -> Any:
+    if not _ensure_email_owned(email_addr):
+        return build_error_response(
+            "ACCOUNT_NOT_FOUND",
+            "账号不存在",
+            message_en="Account not found",
+            status=404,
+        )
     """ZER-90：前端统一验证码提取接口（与 extract-verification 等价，支持 field 参数）。"""
     return _api_extract_verification_impl(email_addr)
 

@@ -20,7 +20,7 @@ class UnifiedVerificationApiTests(unittest.TestCase):
         self.client = self.app.test_client()
 
     def _login(self):
-        resp = self.client.post("/login", json={"password": "testpass123"})
+        resp = self.client.post("/login", json={"username": "admin", "password": "testpass123"})
         self.assertEqual(resp.status_code, 200)
 
     def _get_with_outlook_account(self, path: str):

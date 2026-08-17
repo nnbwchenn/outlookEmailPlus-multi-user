@@ -105,27 +105,31 @@ def _hydrate_accounts(rows: list[sqlite3.Row], db: sqlite3.Connection) -> list[d
     return accounts
 
 
-def load_accounts(group_id: int | None = None) -> list[dict]:
-    """从数据库加载邮箱账号（自动解密敏感字段，批量加载 tags 避免 N+1）"""
+def load_accounts(group_id: int | None = None, owner_user_id: int | None = None) -> list[dict]:
+    """从数据库加载邮箱账号（自动解密敏感字段，批量加载 tags 避免 N+1）
+
+    owner_user_id 传入时仅返回该用户名下账号（多用户模式数据隔离）。
+    """
     db = get_db()
+    where_parts: list[str] = []
+    params: list[Any] = []
     if group_id:
-        cursor = db.execute(
-            """
-            SELECT a.*, g.name as group_name, g.color as group_color
-            FROM accounts a
-            LEFT JOIN groups g ON a.group_id = g.id
-            WHERE a.group_id = ?
-            ORDER BY a.created_at DESC
+        where_parts.append("a.group_id = ?")
+        params.append(group_id)
+    if owner_user_id is not None:
+        where_parts.append("a.owner_user_id = ?")
+        params.append(owner_user_id)
+    where_sql = ("WHERE " + " AND ".join(where_parts)) if where_parts else ""
+    cursor = db.execute(
+        f"""
+        SELECT a.*, g.name as group_name, g.color as group_color
+        FROM accounts a
+        LEFT JOIN groups g ON a.group_id = g.id
+        {where_sql}
+        ORDER BY a.created_at DESC
         """,
-            (group_id,),
-        )
-    else:
-        cursor = db.execute("""
-            SELECT a.*, g.name as group_name, g.color as group_color
-            FROM accounts a
-            LEFT JOIN groups g ON a.group_id = g.id
-            ORDER BY a.created_at DESC
-        """)
+        params,
+    )
     rows = cursor.fetchall()
     return _hydrate_accounts(rows, db)
 
@@ -135,6 +139,7 @@ def _build_account_list_where(
     group_id: int | None,
     search: str,
     tag_ids: list[int],
+    owner_user_id: int | None = None,
 ) -> tuple[str, list[Any]]:
     where_clauses: list[str] = []
     params: list[Any] = []
@@ -142,6 +147,10 @@ def _build_account_list_where(
     if group_id is not None:
         where_clauses.append("a.group_id = ?")
         params.append(group_id)
+
+    if owner_user_id is not None:
+        where_clauses.append("a.owner_user_id = ?")
+        params.append(owner_user_id)
 
     normalized_search = str(search or "").strip().lower()
     if normalized_search:
@@ -202,8 +211,12 @@ def load_accounts_page(
     tag_ids: list[int] | None = None,
     sort_by: str = "refresh_time",
     sort_order: str = "asc",
+    owner_user_id: int | None = None,
 ) -> tuple[list[dict[str, Any]], int, int]:
-    """按条件分页加载账号列表，保留 load_accounts 的全量语义给后台流程使用。"""
+    """按条件分页加载账号列表，保留 load_accounts 的全量语义给后台流程使用。
+
+    owner_user_id 传入时仅返回该用户名下账号（多用户模式数据隔离）。
+    """
     db = get_db()
     normalized_page = max(1, int(page or 1))
     normalized_page_size = max(1, int(page_size or 50))
@@ -213,6 +226,7 @@ def load_accounts_page(
         group_id=group_id,
         search=search,
         tag_ids=normalized_tag_ids,
+        owner_user_id=owner_user_id,
     )
     order_sql = _build_account_list_order(sort_by, sort_order)
 
@@ -395,10 +409,11 @@ def add_account(
     imap_port: int = 993,
     imap_password: str = "",
     add_to_pool: bool = False,
+    owner_user_id: int | None = None,
     db: sqlite3.Connection | None = None,
     commit: bool = True,
 ) -> bool:
-    """添加邮箱账号（支持外部事务批量导入）"""
+    """添加邮箱账号（支持外部事务批量导入）；owner_user_id 指定账号归属用户"""
     db = db or get_db()
     try:
         account_type = (account_type or "outlook").strip().lower()
@@ -427,9 +442,9 @@ def add_account(
             INSERT INTO accounts (
                 email, password, client_id, refresh_token,
                 account_type, provider, imap_host, imap_port, imap_password,
-                group_id, remark, pool_status, email_domain
+                group_id, remark, pool_status, email_domain, owner_user_id
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
             (
                 email_addr,
@@ -445,6 +460,7 @@ def add_account(
                 remark,
                 initial_pool_status,
                 email_domain,
+                owner_user_id,
             ),
         )
         if commit:
@@ -718,3 +734,32 @@ def get_telegram_push_accounts() -> list[dict]:
            LEFT JOIN groups g ON a.group_id = g.id
            WHERE a.telegram_push_enabled = 1 AND a.status = 'active'""").fetchall()
     return [dict(r) for r in rows]
+
+
+# ==================== 多用户：账号归属辅助 ====================
+
+
+def get_account_owner(account_id: int) -> int | None:
+    """返回账号的 owner_user_id（None = 管理员全局账号）。"""
+    db = get_db()
+    try:
+        row = db.execute("SELECT owner_user_id FROM accounts WHERE id = ?", (account_id,)).fetchone()
+        if not row:
+            return None
+        return row["owner_user_id"]
+    except Exception:
+        return None
+
+
+def assign_account_owner(account_id: int, owner_user_id: int | None) -> bool:
+    """设置账号归属（None = 归还管理员全局）。"""
+    db = get_db()
+    try:
+        db.execute(
+            "UPDATE accounts SET owner_user_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+            (owner_user_id, account_id),
+        )
+        db.commit()
+        return True
+    except Exception:
+        return False

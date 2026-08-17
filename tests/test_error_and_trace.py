@@ -19,7 +19,7 @@ class ErrorAndTraceTests(unittest.TestCase):
             clear_login_attempts()
 
     def _login(self, client, password: str = "testpass123"):
-        resp = client.post("/login", json={"password": password})
+        resp = client.post("/login", json={"username": "admin", "password": password})
         self.assertEqual(resp.status_code, 200)
         return resp
 
@@ -93,7 +93,7 @@ class ErrorAndTraceTests(unittest.TestCase):
 
     def test_delete_emails_all_methods_fail_returns_aggregated_error(self):
         client = self.app.test_client()
-        login = client.post("/login", json={"password": "testpass123"})
+        login = client.post("/login", json={"username": "admin", "password": "testpass123"})
         self.assertEqual(login.status_code, 200)
 
         email_addr = "user@example.com"
@@ -163,7 +163,7 @@ class ErrorAndTraceTests(unittest.TestCase):
 
     def test_delete_emails_proxy_error_does_not_fallback_to_imap(self):
         client = self.app.test_client()
-        login = client.post("/login", json={"password": "testpass123"})
+        login = client.post("/login", json={"username": "admin", "password": "testpass123"})
         self.assertEqual(login.status_code, 200)
 
         email_addr = "user@example.com"
@@ -226,7 +226,7 @@ class ErrorAndTraceTests(unittest.TestCase):
         client = self.app.test_client()
 
         # 登录
-        login = client.post("/login", json={"password": "testpass123"})
+        login = client.post("/login", json={"username": "admin", "password": "testpass123"})
         self.assertEqual(login.status_code, 200)
         self.assertEqual(login.get_json().get("success"), True)
 
@@ -246,7 +246,7 @@ class ErrorAndTraceTests(unittest.TestCase):
 
     def test_scheduler_status_endpoint_is_accessible_after_login(self):
         client = self.app.test_client()
-        login = client.post("/login", json={"password": "testpass123"})
+        login = client.post("/login", json={"username": "admin", "password": "testpass123"})
         self.assertEqual(login.status_code, 200)
 
         resp = client.get("/api/scheduler/status")
@@ -258,7 +258,7 @@ class ErrorAndTraceTests(unittest.TestCase):
 
     def test_system_health_and_scheduler_status_use_real_refresh_lock_name(self):
         client = self.app.test_client()
-        login = client.post("/login", json={"password": "testpass123"})
+        login = client.post("/login", json={"username": "admin", "password": "testpass123"})
         self.assertEqual(login.status_code, 200)
 
         with self.app.app_context():
@@ -298,7 +298,7 @@ class ErrorAndTraceTests(unittest.TestCase):
 
     def test_validate_cron_endpoint(self):
         client = self.app.test_client()
-        login = client.post("/login", json={"password": "testpass123"})
+        login = client.post("/login", json={"username": "admin", "password": "testpass123"})
         self.assertEqual(login.status_code, 200)
 
         resp = client.post("/api/settings/validate-cron", json={"cron_expression": "0 2 * * *"})
@@ -311,7 +311,7 @@ class ErrorAndTraceTests(unittest.TestCase):
 
     def test_system_diagnostics_includes_schema(self):
         client = self.app.test_client()
-        login = client.post("/login", json={"password": "testpass123"})
+        login = client.post("/login", json={"username": "admin", "password": "testpass123"})
         self.assertEqual(login.status_code, 200)
 
         resp = client.get("/api/system/diagnostics")
@@ -326,7 +326,7 @@ class ErrorAndTraceTests(unittest.TestCase):
 
     def test_system_upgrade_status_endpoint(self):
         client = self.app.test_client()
-        login = client.post("/login", json={"password": "testpass123"})
+        login = client.post("/login", json={"username": "admin", "password": "testpass123"})
         self.assertEqual(login.status_code, 200)
 
         resp = client.get("/api/system/upgrade-status")
@@ -346,7 +346,7 @@ class ErrorAndTraceTests(unittest.TestCase):
         for _ in range(self.module.MAX_LOGIN_ATTEMPTS):
             resp = client.post(
                 "/login",
-                json={"password": "wrong_password"},
+                json={"username": "admin", "password": "wrong_password"},
                 headers={"X-Forwarded-For": ip},
             )
             self.assertEqual(resp.status_code, 401)
@@ -357,7 +357,7 @@ class ErrorAndTraceTests(unittest.TestCase):
 
         resp = client.post(
             "/login",
-            json={"password": "wrong_password"},
+            json={"username": "admin", "password": "wrong_password"},
             headers={"X-Forwarded-For": ip},
         )
         self.assertEqual(resp.status_code, 429)
@@ -370,7 +370,7 @@ class ErrorAndTraceTests(unittest.TestCase):
 
     def test_export_requires_verify_token(self):
         client = self.app.test_client()
-        login = client.post("/login", json={"password": "testpass123"})
+        login = client.post("/login", json={"username": "admin", "password": "testpass123"})
         self.assertEqual(login.status_code, 200)
 
         resp = client.post(
@@ -389,7 +389,7 @@ class ErrorAndTraceTests(unittest.TestCase):
 
     def test_group_export_verify_failure_uses_detailed_error_contract(self):
         client = self.app.test_client()
-        login = client.post("/login", json={"password": "testpass123"})
+        login = client.post("/login", json={"username": "admin", "password": "testpass123"})
         self.assertEqual(login.status_code, 200)
 
         with patch(
@@ -410,7 +410,7 @@ class ErrorAndTraceTests(unittest.TestCase):
 
     def test_import_failure_uses_structured_error_contract(self):
         client = self.app.test_client()
-        login = client.post("/login", json={"password": "testpass123"})
+        login = client.post("/login", json={"username": "admin", "password": "testpass123"})
         self.assertEqual(login.status_code, 200)
 
         resp = client.post(
@@ -428,7 +428,7 @@ class ErrorAndTraceTests(unittest.TestCase):
 
     def test_accounts_list_and_search_include_tags_and_last_refresh(self):
         client = self.app.test_client()
-        login = client.post("/login", json={"password": "testpass123"})
+        login = client.post("/login", json={"username": "admin", "password": "testpass123"})
         self.assertEqual(login.status_code, 200)
 
         unique = uuid.uuid4().hex
@@ -501,7 +501,7 @@ class ErrorAndTraceTests(unittest.TestCase):
 
     def test_system_group_cannot_be_deleted(self):
         client = self.app.test_client()
-        login = client.post("/login", json={"password": "testpass123"})
+        login = client.post("/login", json={"username": "admin", "password": "testpass123"})
         self.assertEqual(login.status_code, 200)
 
         conn = self.module.create_sqlite_connection()
@@ -527,7 +527,7 @@ class ErrorAndTraceTests(unittest.TestCase):
 
     def test_account_cannot_be_moved_to_system_group_via_update(self):
         client = self.app.test_client()
-        login = client.post("/login", json={"password": "testpass123"})
+        login = client.post("/login", json={"username": "admin", "password": "testpass123"})
         self.assertEqual(login.status_code, 200)
 
         unique = uuid.uuid4().hex

@@ -122,8 +122,9 @@ def add_group(
     verification_code_regex: Any = "",
     verification_ai_enabled: Any = 0,
     verification_ai_model: Any = "",
+    owner_user_id: int | None = None,
 ) -> int | None:
-    """添加分组"""
+    """添加分组；owner_user_id 指定分组归属用户（None = 管理员全局）"""
     db = get_db()
     policy = normalize_group_verification_policy(
         verification_code_length=verification_code_length,
@@ -142,9 +143,10 @@ def add_group(
                 verification_code_length,
                 verification_code_regex,
                 verification_ai_enabled,
-                verification_ai_model
+                verification_ai_model,
+                owner_user_id
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
             (
                 name,
@@ -155,6 +157,7 @@ def add_group(
                 policy["verification_code_regex"],
                 policy["verification_ai_enabled"],
                 policy["verification_ai_model"],
+                owner_user_id,
             ),
         )
         db.commit()
@@ -258,20 +261,40 @@ def get_group_account_count(group_id: int) -> int:
     return row["count"] if row else 0
 
 
-def load_groups_with_account_count() -> list[dict]:
-    """加载所有分组并附带各分组的邮箱数量（单次 SQL 聚合，消除 N+1）"""
+def load_groups_with_account_count(owner_user_id: int | None = None) -> list[dict]:
+    """加载分组并附带各分组的邮箱数量（单次 SQL 聚合，消除 N+1）
+
+    owner_user_id 传入时仅返回该用户名下分组 + 全局默认分组（member 数据隔离）。
+    """
     db = get_db()
-    cursor = db.execute("""
-        SELECT g.*,
-               COALESCE(a.cnt, 0) AS account_count
-        FROM groups g
-        LEFT JOIN (
-            SELECT group_id, COUNT(*) AS cnt
-            FROM accounts
-            GROUP BY group_id
-        ) a ON a.group_id = g.id
-        ORDER BY g.id
-    """)
+    if owner_user_id is not None:
+        cursor = db.execute(
+            """
+            SELECT g.*,
+                   COALESCE(a.cnt, 0) AS account_count
+            FROM groups g
+            LEFT JOIN (
+                SELECT group_id, COUNT(*) AS cnt
+                FROM accounts
+                GROUP BY group_id
+            ) a ON a.group_id = g.id
+            WHERE g.owner_user_id = ? OR g.name = '默认分组'
+            ORDER BY g.id
+            """,
+            (owner_user_id,),
+        )
+    else:
+        cursor = db.execute("""
+            SELECT g.*,
+                   COALESCE(a.cnt, 0) AS account_count
+            FROM groups g
+            LEFT JOIN (
+                SELECT group_id, COUNT(*) AS cnt
+                FROM accounts
+                GROUP BY group_id
+            ) a ON a.group_id = g.id
+            ORDER BY g.id
+        """)
     rows = cursor.fetchall()
     return [dict(row) for row in rows]
 
@@ -339,3 +362,18 @@ def resolve_group_verification_policy(
         "ai_enabled": ai_enabled,
         "ai_model": ai_model,
     }
+
+
+# ==================== 多用户：分组归属辅助 ====================
+
+
+def get_group_owner(group_id: int) -> int | None:
+    """返回分组的 owner_user_id（None = 管理员全局分组）。"""
+    db = get_db()
+    try:
+        row = db.execute("SELECT owner_user_id FROM groups WHERE id = ?", (group_id,)).fetchone()
+        if not row:
+            return None
+        return row["owner_user_id"]
+    except Exception:
+        return None

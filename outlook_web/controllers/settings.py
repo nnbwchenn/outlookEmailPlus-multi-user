@@ -13,7 +13,8 @@ from outlook_web.db import get_db
 from outlook_web.errors import build_error_payload
 from outlook_web.repositories import external_api_keys as external_api_keys_repo
 from outlook_web.repositories import settings as settings_repo
-from outlook_web.security.auth import login_required
+from outlook_web.repositories import users as users_repo
+from outlook_web.security.auth import admin_required, login_required
 from outlook_web.security.crypto import (
     decrypt_data,
     encrypt_data,
@@ -134,6 +135,7 @@ def _ensure_email_service_available() -> None:
 
 
 @login_required
+@admin_required
 def api_get_settings() -> Any:
     """获取所有设置"""
     all_settings = settings_repo.get_all_settings()
@@ -162,6 +164,7 @@ def api_get_settings() -> Any:
 
     # 敏感字段：不返回明文/哈希，仅提供"是否已设置/脱敏展示"
     login_password_value = all_settings.get("login_password") or ""
+    admin_user = users_repo.get_user_by_username("admin")
     external_api_key_value = settings_repo.get_external_api_key()
     external_api_keys = external_api_keys_repo.list_external_api_keys(include_disabled=True)
     usage_summary = external_api_keys_repo.get_external_api_usage_summary(
@@ -179,7 +182,7 @@ def api_get_settings() -> Any:
                 },
             )
         )
-    safe_settings["login_password_set"] = bool(login_password_value)
+    safe_settings["login_password_set"] = bool(admin_user)
     safe_settings["allow_login_password_change"] = config.get_allow_login_password_change()
     safe_settings["external_api_key_set"] = bool(external_api_key_value)
     safe_settings["external_api_key_masked"] = _mask_secret_value(external_api_key_value) if external_api_key_value else ""
@@ -249,6 +252,7 @@ def api_get_settings() -> Any:
 
 
 @login_required
+@admin_required
 def api_get_external_api_key_plaintext() -> Any:
     api_key_value = settings_repo.get_external_api_key()
     if not api_key_value:
@@ -264,6 +268,7 @@ def api_get_external_api_key_plaintext() -> Any:
 
 
 @login_required
+@admin_required
 def api_update_settings() -> Any:
     """更新设置"""
     # 延迟导入避免循环依赖
@@ -425,9 +430,14 @@ def api_update_settings() -> Any:
             if len(new_password) < 8:
                 errors.append("密码长度至少为 8 位")
             else:
-                # 哈希新密码
-                hashed_password = hash_password(new_password)
-                queue_setting_update("login_password", hashed_password)
+                # 多用户：修改主管理员（admin）密码
+                def _update_admin_password(plain: str = new_password) -> bool:
+                    admin = users_repo.get_user_by_username("admin")
+                    if not admin:
+                        return False
+                    return users_repo.update_user(admin["id"], password=plain)
+
+                queue_operation(_update_admin_password)
                 updated.append("登录密码")
 
     # 更新对外开放 API Key（建议加密存储）
@@ -935,6 +945,7 @@ def api_update_settings() -> Any:
 
 
 @login_required
+@admin_required
 def api_validate_cron() -> Any:
     """验证 Cron 表达式"""
     try:
@@ -990,6 +1001,7 @@ def api_validate_cron() -> Any:
 
 
 @login_required
+@admin_required
 def api_test_email() -> Any:
     """发送邮件通知测试消息。按“先保存，再测试”规则，仅使用已保存的接收邮箱。"""
     from outlook_web.services import email_push
@@ -1017,6 +1029,7 @@ def api_test_email() -> Any:
 
 
 @login_required
+@admin_required
 def api_test_webhook() -> Any:
     """发送 Webhook 测试消息。按“先保存，再测试”规则，仅使用已保存配置。"""
     try:
@@ -1050,6 +1063,7 @@ def api_test_webhook() -> Any:
 
 
 @login_required
+@admin_required
 def api_test_verification_ai() -> Any:
     """测试已保存的系统级验证码 AI 配置可用性（连通性优先）。"""
     data = request.get_json(silent=True) or {}
@@ -1109,6 +1123,7 @@ def api_test_verification_ai() -> Any:
 
 
 @login_required
+@admin_required
 def api_test_telegram() -> Any:
     """发送 Telegram 测试消息，验证 bot_token + chat_id 配置是否正确"""
     from outlook_web.services.telegram_push import _send_telegram_message
@@ -1143,6 +1158,7 @@ def api_test_telegram() -> Any:
 
 
 @login_required
+@admin_required
 def api_test_telegram_proxy() -> Any:
     """测试 Telegram 代理连通性：用指定代理实际请求 api.telegram.org/getMe"""
     import time

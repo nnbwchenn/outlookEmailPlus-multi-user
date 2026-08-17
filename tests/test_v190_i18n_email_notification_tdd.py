@@ -34,7 +34,7 @@ class V190ApiContractRedTests(unittest.TestCase):
             settings_repo.set_setting("telegram_chat_id", "")
 
     def _login(self, client, password: str = "testpass123"):
-        resp = client.post("/login", json={"password": password})
+        resp = client.post("/login", json={"username": "admin", "password": password})
         self.assertEqual(resp.status_code, 200)
         payload = resp.get_json() or {}
         self.assertEqual(payload.get("success"), True)
@@ -348,7 +348,7 @@ class V190ApiContractRedTests(unittest.TestCase):
     def test_t_api_008_login_invalid_password_contains_message_en(self):
         client = self.app.test_client()
 
-        resp = client.post("/login", json={"password": "wrong_password"})
+        resp = client.post("/login", json={"username": "admin", "password": "wrong_password"})
         self.assertEqual(resp.status_code, 401)
         data = resp.get_json() or {}
         self.assertEqual(data.get("success"), False)

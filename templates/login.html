@@ -23,8 +23,12 @@
 
             <form id="loginForm" onsubmit="handleLogin(event)">
                 <div class="form-group">
+                    <label class="form-label" for="username">用户名</label>
+                    <input type="text" class="form-input" id="username" placeholder="请输入用户名" autocomplete="username" required>
+                </div>
+                <div class="form-group">
                     <label class="form-label" for="password">登录密码</label>
-                    <input type="password" class="form-input" id="password" placeholder="请输入密码" autofocus required>
+                    <input type="password" class="form-input" id="password" placeholder="请输入密码" autocomplete="current-password" required>
                 </div>
                 <button type="submit" class="btn btn-primary" id="loginBtn" style="width:100%; padding:0.7rem; font-size:0.95rem; display:flex; align-items:center; justify-content:center; gap:0.4rem;">登录</button>
             </form>
@@ -60,10 +64,15 @@
 
         async function handleLogin(event) {
             event.preventDefault();
+            const username = document.getElementById('username').value.trim();
             const password = document.getElementById('password').value;
             const pickApiMessage = window.pickApiMessage || ((payload, zh) => zh);
             const translateText = window.translateAppText || ((text) => text);
 
+            if (!username) {
+                showLoginError(translateText('请输入用户名'));
+                return;
+            }
             if (!password) {
                 showLoginError(translateText('请输入密码'));
                 return;
@@ -76,7 +85,7 @@
                 const response = await fetch('/login', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ password })
+                    body: JSON.stringify({ username, password })
                 });
                 const data = await response.json();
 

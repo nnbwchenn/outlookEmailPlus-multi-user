@@ -42,7 +42,7 @@ class TestExtractVerificationAPI(unittest.TestCase):
         """
         # TODO: 实现后取消注释
         # # 登录
-        # self.client.post('/login', data={'password': 'admin123'})
+        # self.client.post('/login', data={'username': 'admin', 'password': 'admin123'})
         #
         # # 调用 API
         # response = self.client.get('/api/emails/test@example.com/extract-verification')
@@ -64,7 +64,7 @@ class TestExtractVerificationAPI(unittest.TestCase):
         测试目的：验证 API 能正确处理未找到验证信息的情况
         """
         # TODO: 实现后取消注释
-        # self.client.post('/login', data={'password': 'admin123'})
+        # self.client.post('/login', data={'username': 'admin', 'password': 'admin123'})
         #
         # response = self.client.get('/api/emails/empty@example.com/extract-verification')
         # data = response.get_json()
@@ -95,7 +95,7 @@ class TestExtractVerificationAPI(unittest.TestCase):
         测试目的：验证 API 能正确处理邮箱不存在的情况
         """
         # TODO: 实现后取消注释
-        # self.client.post('/login', data={'password': 'admin123'})
+        # self.client.post('/login', data={'username': 'admin', 'password': 'admin123'})
         #
         # response = self.client.get('/api/emails/notexist@example.com/extract-verification')
         # data = response.get_json()
@@ -113,7 +113,7 @@ class TestExtractVerificationAPI(unittest.TestCase):
         测试目的：验证 API 响应时间 < 2 秒
         """
         # TODO: 实现后取消注释
-        # self.client.post('/login', data={'password': 'admin123'})
+        # self.client.post('/login', data={'username': 'admin', 'password': 'admin123'})
         #
         # start_time = time.time()
         #
@@ -136,7 +136,7 @@ class TestExtractVerificationAPI(unittest.TestCase):
         测试目的：验证 GET /api/settings 能正确返回轮询配置
         """
         # TODO: 实现后取消注释
-        # self.client.post('/login', data={'password': 'admin123'})
+        # self.client.post('/login', data={'username': 'admin', 'password': 'admin123'})
         #
         # response = self.client.get('/api/settings')
         # data = response.get_json()
@@ -156,7 +156,7 @@ class TestExtractVerificationAPI(unittest.TestCase):
         测试目的：验证 PUT /api/settings 能正确更新轮询配置
         """
         # TODO: 实现后取消注释
-        # self.client.post('/login', data={'password': 'admin123'})
+        # self.client.post('/login', data={'username': 'admin', 'password': 'admin123'})
         #
         # # 更新配置
         # response = self.client.put('/api/settings',
@@ -189,7 +189,7 @@ class TestExtractVerificationAPI(unittest.TestCase):
         测试目的：验证轮询间隔参数验证（5-300 秒）
         """
         # TODO: 实现后取消注释
-        # self.client.post('/login', data={'password': 'admin123'})
+        # self.client.post('/login', data={'username': 'admin', 'password': 'admin123'})
         #
         # # 测试小于 5
         # response1 = self.client.put('/api/settings',
@@ -214,7 +214,7 @@ class TestExtractVerificationAPI(unittest.TestCase):
         测试目的：验证轮询次数参数验证（1-100 次）
         """
         # TODO: 实现后取消注释
-        # self.client.post('/login', data={'password': 'admin123'})
+        # self.client.post('/login', data={'username': 'admin', 'password': 'admin123'})
         #
         # # 测试小于 1
         # response1 = self.client.put('/api/settings',

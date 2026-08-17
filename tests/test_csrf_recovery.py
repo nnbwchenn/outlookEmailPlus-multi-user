@@ -42,7 +42,7 @@ class CsrfRecoveryTests(unittest.TestCase):
         )
 
     def _login(self, client):
-        response = client.post("/login", json={"password": "testpass123"})
+        response = client.post("/login", json={"username": "admin", "password": "testpass123"})
         self.assertEqual(response.status_code, 200)
 
     def _default_group_id(self) -> int:

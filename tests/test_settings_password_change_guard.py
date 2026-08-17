@@ -12,14 +12,15 @@ class SettingsPasswordChangeGuardTests(unittest.TestCase):
 
     def setUp(self):
         with self.app.app_context():
-            from outlook_web.repositories import settings as settings_repo
-            from outlook_web.security.crypto import hash_password
+            from outlook_web.repositories import users as users_repo
 
-            settings_repo.set_setting("login_password", hash_password("testpass123"))
+            admin = users_repo.get_user_by_username("admin")
+            if admin:
+                users_repo.update_user(admin["id"], password="testpass123")
             clear_login_attempts()
 
     def _login(self, client, password: str = "testpass123"):
-        resp = client.post("/login", json={"password": password})
+        resp = client.post("/login", json={"username": "admin", "password": password})
         self.assertEqual(resp.status_code, 200)
         self.assertTrue(resp.get_json().get("success"))
 
@@ -69,10 +70,11 @@ class SettingsPasswordChangeGuardTests(unittest.TestCase):
         )
 
         with self.app.app_context():
-            from outlook_web.repositories import settings as settings_repo
+            from outlook_web.repositories import users as users_repo
             from outlook_web.security.crypto import verify_password
 
-            stored_password = settings_repo.get_login_password()
+            admin = users_repo.get_user_by_username("admin")
+            stored_password = admin["password_hash"]
             self.assertTrue(verify_password("testpass123", stored_password))
             self.assertFalse(verify_password("newpass123", stored_password))
 
@@ -110,9 +112,10 @@ class SettingsPasswordChangeGuardTests(unittest.TestCase):
         self.assertTrue(data.get("success"))
 
         with self.app.app_context():
-            from outlook_web.repositories import settings as settings_repo
+            from outlook_web.repositories import users as users_repo
             from outlook_web.security.crypto import verify_password
 
-            stored_password = settings_repo.get_login_password()
+            admin = users_repo.get_user_by_username("admin")
+            stored_password = admin["password_hash"]
             self.assertTrue(verify_password("newpass123", stored_password))
             self.assertFalse(verify_password("testpass123", stored_password))

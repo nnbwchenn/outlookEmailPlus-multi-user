@@ -22,7 +22,7 @@ class ImportExportV2AutoTests(unittest.TestCase):
             clear_login_attempts()
 
     def _login(self, client, password: str = "testpass123"):
-        resp = client.post("/login", json={"password": password})
+        resp = client.post("/login", json={"username": "admin", "password": password})
         self.assertEqual(resp.status_code, 200)
         data = resp.get_json()
         self.assertEqual(data.get("success"), True)
@@ -75,7 +75,7 @@ class ImportExportV2AutoTests(unittest.TestCase):
             return value
 
     def _issue_export_token(self, client) -> str:
-        verify = client.post("/api/export/verify", json={"password": "testpass123"})
+        verify = client.post("/api/export/verify", json={"username": "admin", "password": "testpass123"})
         self.assertEqual(verify.status_code, 200)
         data = verify.get_json()
         self.assertEqual(data.get("success"), True)

@@ -786,6 +786,19 @@
                 </div>
             </div>
 
+            <!-- ===== Page: Users（多用户管理，admin 专属） ===== -->
+            <div class="page page-hidden" id="page-users">
+                <div class="card">
+                    <div class="card-header">
+                        <div class="card-title"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="emoji-svg"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>用户管理</div>
+                        <button class="btn btn-primary btn-sm" onclick="showCreateUserModal()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="emoji-svg"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>创建用户</button>
+                    </div>
+                    <div class="card-body" id="usersContainer">
+                        <div class="loading-overlay"><span class="spinner"></span> 加载中…</div>
+                    </div>
+                </div>
+            </div>
+
             <!-- ===== Page: Audit ===== -->
             <div class="page page-hidden" id="page-audit">
                 <div class="card">

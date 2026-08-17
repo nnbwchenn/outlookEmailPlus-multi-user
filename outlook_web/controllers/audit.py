@@ -5,12 +5,13 @@ from typing import Any
 from flask import jsonify, request
 
 from outlook_web.audit import query_audit_logs
-from outlook_web.security.auth import login_required
+from outlook_web.security.auth import admin_required, login_required
 
 # ==================== 审计日志 API ====================
 
 
 @login_required
+@admin_required
 def api_get_audit_logs() -> Any:
     """获取审计日志（敏感操作可追溯）"""
     data = query_audit_logs(

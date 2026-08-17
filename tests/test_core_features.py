@@ -22,7 +22,7 @@ class CoreFeatureTests(unittest.TestCase):
             clear_login_attempts()
 
     def _login(self, client, password: str = "testpass123"):
-        resp = client.post("/login", json={"password": password})
+        resp = client.post("/login", json={"username": "admin", "password": password})
         self.assertEqual(resp.status_code, 200)
         data = resp.get_json()
         self.assertEqual(data.get("success"), True)
@@ -151,7 +151,7 @@ class CoreFeatureTests(unittest.TestCase):
         finally:
             conn.close()
 
-        verify = client.post("/api/export/verify", json={"password": "testpass123"})
+        verify = client.post("/api/export/verify", json={"username": "admin", "password": "testpass123"})
         self.assertEqual(verify.status_code, 200)
         verify_data = verify.get_json()
         self.assertEqual(verify_data.get("success"), True)

@@ -34,6 +34,8 @@ def create_app(*, autostart_scheduler: bool | None = None):
         from outlook_web.routes import (
             accounts,
             audit,
+            user_notifications as user_notifications_routes,
+            users as users_routes,
             emails,
             external_pool,
             groups,
@@ -167,6 +169,8 @@ def create_app(*, autostart_scheduler: bool | None = None):
         app.register_blueprint(groups.create_blueprint())
         app.register_blueprint(tags.create_blueprint())
         app.register_blueprint(accounts.create_blueprint())
+        app.register_blueprint(users_routes.create_blueprint())
+        app.register_blueprint(user_notifications_routes.create_blueprint())
         app.register_blueprint(emails.create_blueprint())
         app.register_blueprint(settings.create_blueprint())
         app.register_blueprint(scheduler.create_blueprint())

@@ -16,8 +16,10 @@ from outlook_web.errors import (
 from outlook_web.repositories import accounts as accounts_repo
 from outlook_web.repositories import groups as groups_repo
 from outlook_web.security.auth import (
+    admin_required,
     consume_export_verify_token,
     get_client_ip,
+    get_current_user,
     get_user_agent,
     login_required,
 )
@@ -50,8 +52,12 @@ def sanitize_input(text: str, max_length: int = 500) -> str:
 
 @login_required
 def api_get_groups() -> Any:
-    """获取所有分组（含各分组邮箱数量，单次 SQL 聚合）"""
-    groups = groups_repo.load_groups_with_account_count()
+    """获取分组（含各分组邮箱数量，单次 SQL 聚合）；member 仅见自己分组"""
+    user = get_current_user()
+    owner_scope = None
+    if user and user.get("role") != "admin":
+        owner_scope = int(user.get("id") or 0) or None
+    groups = groups_repo.load_groups_with_account_count(owner_user_id=owner_scope)
     return jsonify({"success": True, "groups": groups})
 
 
@@ -71,6 +77,7 @@ def api_get_group(group_id: int) -> Any:
 
 
 @login_required
+@admin_required
 def api_add_group() -> Any:
     """添加分组"""
     data = request.json
@@ -135,6 +142,7 @@ def api_add_group() -> Any:
 
 
 @login_required
+@admin_required
 def api_update_group(group_id: int) -> Any:
     """更新分组"""
     data = request.json
@@ -228,6 +236,7 @@ def api_update_group(group_id: int) -> Any:
 
 
 @login_required
+@admin_required
 def api_delete_group(group_id: int) -> Any:
     """删除分组"""
     group = groups_repo.get_group_by_id(group_id)
@@ -278,6 +287,7 @@ def api_delete_group(group_id: int) -> Any:
 
 
 @login_required
+@admin_required
 def api_export_group(group_id: int) -> Any:
     """导出分组下的所有邮箱账号为 TXT 文件（需要二次验证）"""
     # 从请求头获取二次验证 token（避免 URL 泄露）

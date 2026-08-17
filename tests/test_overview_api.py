@@ -28,7 +28,7 @@ class OverviewApiBaseTests(unittest.TestCase):
     def _login(client) -> str:
         resp = client.post(
             "/login",
-            json={"password": "testpass123"},
+            json={"username": "admin", "password": "testpass123"},
             content_type="application/json",
         )
         if resp.status_code != 200:

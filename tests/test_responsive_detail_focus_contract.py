@@ -24,7 +24,7 @@ class ResponsiveDetailFocusContractTests(unittest.TestCase):
         cls.app = cls.module.app
 
     def _login(self, client, password: str = "testpass123"):
-        resp = client.post("/login", json={"password": password})
+        resp = client.post("/login", json={"username": "admin", "password": password})
         self.assertEqual(resp.status_code, 200)
 
     def _get_index_html(self) -> str:
@@ -163,7 +163,7 @@ class ResponsiveThreeTierContractTests(unittest.TestCase):
         cls.app = cls.module.app
 
     def _login(self, client):
-        resp = client.post("/login", json={"password": "testpass123"})
+        resp = client.post("/login", json={"username": "admin", "password": "testpass123"})
         self.assertEqual(resp.status_code, 200)
 
     def _get_index_html(self) -> str:

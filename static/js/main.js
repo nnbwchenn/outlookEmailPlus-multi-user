@@ -1,4 +1,125 @@
 // 全局状态
+        window.__currentUser = null; // { id, username, role, display_name }
+
+        // 加载当前登录用户信息（前端角色化渲染）
+        async function fetchCurrentUser() {
+            try {
+                const response = await fetch('/api/me');
+                if (!response.ok) {
+                    window.location.href = '/login';
+                    return null;
+                }
+                const data = await response.json();
+                if (data.success && data.user) {
+                    window.__currentUser = data.user;
+                }
+                return window.__currentUser;
+            } catch (error) {
+                return null;
+            }
+        }
+
+        function isAdminUser() {
+            return window.__currentUser && window.__currentUser.role === 'admin';
+        }
+
+        // 按角色隐藏 admin 专属元素 / 显示用户管理入口
+        function applyRoleUI() {
+            const user = window.__currentUser;
+            if (!user) return;
+
+            const isAdmin = user.role === 'admin';
+
+            // 侧边栏 admin 专属菜单：号池管理 / 刷新日志 / 系统设置 / 审计日志 / Token 工具
+            const adminSelectors = [
+                '.nav-item[data-page="pool-admin"]',
+                '.nav-item[data-page="refresh-log"]',
+                '.nav-item[data-page="settings"]',
+                '.nav-item[data-page="audit"]',
+                '.nav-item[data-page="users"]',
+            ];
+            document.querySelectorAll('.nav-item').forEach(item => {
+                const page = item.dataset.page;
+                const isAdminItem = ['pool-admin', 'refresh-log', 'settings', 'audit', 'users'].includes(page);
+                const isTokenTool = item.getAttribute('onclick') && item.getAttribute('onclick').includes('token-tool');
+                if (isAdminItem || isTokenTool) {
+                    item.style.display = isAdmin ? '' : 'none';
+                }
+            });
+
+            // 隐藏空 nav-section（member 隐藏 Token / 系统 区块）
+            document.querySelectorAll('.nav-section').forEach(section => {
+                const nav = section.parentElement;
+                if (!nav) return;
+                const next = section.nextElementSibling;
+                // 检查该 section 之后直到下一个 section 的所有 nav-item 是否都隐藏
+                let sibling = next;
+                let allHidden = true;
+                let foundAny = false;
+                while (sibling && sibling.classList && !sibling.classList.contains('nav-section')) {
+                    if (sibling.classList.contains('nav-item')) {
+                        foundAny = true;
+                        if (sibling.style.display !== 'none') {
+                            allHidden = false;
+                            break;
+                        }
+                    }
+                    sibling = sibling.nextElementSibling;
+                }
+                if (foundAny && allHidden) {
+                    section.style.display = 'none';
+                } else {
+                    section.style.display = '';
+                }
+            });
+
+            // 用户管理菜单项（admin 专属）
+            let userNav = document.querySelector('.nav-item[data-page="users"]');
+            if (!userNav) {
+                const systemSection = Array.from(document.querySelectorAll('.nav-section')).find(s => s.textContent.includes('系统'));
+                if (systemSection) {
+                    userNav = document.createElement('button');
+                    userNav.className = 'nav-item';
+                    userNav.dataset.page = 'users';
+                    userNav.setAttribute('onclick', "navigate('users')");
+                    userNav.innerHTML = '<span class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></span><span>用户管理</span>';
+                    systemSection.insertAdjacentElement('afterend', userNav);
+                }
+            }
+            if (userNav) userNav.style.display = isAdmin ? '' : 'none';
+
+            // member：顶部操作区隐藏 admin 按钮（添加账号 / 导出 / 全量刷新）
+            const actionsEl = document.getElementById('topbar-actions');
+            if (actionsEl && !isAdmin) {
+                actionsEl.querySelectorAll('.btn-inline').forEach(btn => {
+                    const onclick = btn.getAttribute('onclick') || '';
+                    if (onclick.includes('showAddAccountModal') || onclick.includes('showExportModal') || onclick.includes('showRefreshModal')) {
+                        btn.style.display = 'none';
+                    }
+                });
+            }
+
+            // member：邮箱页隐藏 添加分组 / 导入账号 / 管理标签 / 批量操作条
+            if (!isAdmin) {
+                document.querySelectorAll('[onclick*="showAddGroupModal"]').forEach(el => { el.style.display = 'none'; });
+                document.querySelectorAll('[onclick*="showAddAccountModal"]').forEach(el => { el.style.display = 'none'; });
+                document.querySelectorAll('[onclick*="showTagManagementModal"]').forEach(el => { el.style.display = 'none'; });
+                document.querySelectorAll('[onclick*="showExportModal"]').forEach(el => { el.style.display = 'none'; });
+                document.querySelectorAll('#batchActionBar, #compactBatchActionBar, #emailBatchActionBar').forEach(el => { el.style.display = 'none'; });
+                // 排序条中的管理相关
+                const selectAllWrap = document.querySelector('#accountPanel .column-header');
+                if (selectAllWrap) {
+                    // 保留只读视图
+                }
+            }
+
+            // 侧栏用户信息
+            const chipName = document.querySelector('.user-chip-name');
+            const chipRole = document.querySelector('.user-chip-role');
+            if (chipName) chipName.textContent = user.display_name || user.username || '用户';
+            if (chipRole) chipRole.textContent = isAdmin ? '管理员' : '成员';
+        }
+
         let csrfToken = null;
         let csrfTokenRefreshPromise = null;
         let currentAccount = null;
@@ -403,6 +524,11 @@
         }
 
         function navigate(page) {
+            const user = window.__currentUser;
+            if (user && user.role !== 'admin' && ['pool-admin', 'refresh-log', 'settings', 'audit', 'users'].includes(page)) {
+                showToast(translateAppTextLocal('需要管理员权限'), 'error');
+                page = 'mailbox';
+            }
             currentPage = page;
             // Hide all pages
             document.querySelectorAll('.page').forEach(p => p.classList.add('page-hidden'));
@@ -1058,6 +1184,10 @@
             try {
                 await initCSRFToken();
             } catch (error) {}
+
+            // 多用户：加载当前用户角色并按角色渲染 UI
+            await fetchCurrentUser();
+            applyRoleUI();
 
             // 初始化布局状态（从后端读取或迁移旧 localStorage）
             await initLayoutState();

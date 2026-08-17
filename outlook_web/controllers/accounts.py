@@ -21,7 +21,13 @@ from outlook_web.repositories import groups as groups_repo
 from outlook_web.repositories import refresh_logs as refresh_logs_repo
 from outlook_web.repositories import settings as settings_repo
 from outlook_web.repositories import tags as tags_repo
-from outlook_web.security.auth import get_client_ip, get_user_agent, login_required
+from outlook_web.security.auth import (
+    admin_required,
+    get_client_ip,
+    get_current_user,
+    get_user_agent,
+    login_required,
+)
 from outlook_web.security.crypto import decrypt_data
 from outlook_web.services import graph as graph_service
 from outlook_web.services import refresh as refresh_service
@@ -112,6 +118,30 @@ def _outlook_basic_auth_import_error() -> str:
     return "Outlook 邮箱不支持 IMAP Basic Auth 直连（包括 custom host 导入），请使用 4 段 OAuth 格式：邮箱----密码----client_id----refresh_token"
 
 
+# ==================== 多用户：归属与权限辅助 ====================
+
+
+def _get_owner_scope() -> int | None:
+    """返回当前用户的账号可见范围：admin=None（全部），member=自己的 user_id。"""
+    user = get_current_user()
+    if not user:
+        return None
+    if user.get("role") == "admin":
+        return None
+    return int(user.get("id") or 0) or None
+
+
+def _ensure_account_owned(account_id: int) -> bool:
+    """校验当前用户能否访问该账号（admin 全通过；member 仅自己名下）。"""
+    user = get_current_user()
+    if not user:
+        return False
+    if user.get("role") == "admin":
+        return True
+    owner = accounts_repo.get_account_owner(account_id)
+    return owner == int(user.get("id") or 0)
+
+
 # ==================== 账号基础 CRUD API ====================
 
 
@@ -157,6 +187,7 @@ def api_get_accounts() -> Any:
         tag_ids=tag_ids,
         sort_by=sort_by,
         sort_order=sort_order,
+        owner_user_id=_get_owner_scope(),
     )
     total_pages = (total_count + page_size - 1) // page_size if total_count > 0 else 0
 
@@ -249,6 +280,13 @@ def api_get_accounts() -> Any:
 @login_required
 def api_get_account(account_id: int) -> Any:
     """获取单个账号详情"""
+    if not _ensure_account_owned(account_id):
+        return build_error_response(
+            "ACCOUNT_NOT_FOUND",
+            "账号不存在",
+            message_en="Account not found",
+            status=404,
+        )
     account = accounts_repo.get_account_by_id(account_id)
     if not account:
         return build_error_response(
@@ -293,6 +331,7 @@ def api_get_account(account_id: int) -> Any:
 
 
 @login_required
+@admin_required
 def api_add_account() -> Any:
     """添加账号"""
     data = request.json or {}
@@ -1204,6 +1243,7 @@ def _handle_auto_import(data: dict[str, Any], *, add_to_pool: bool = False) -> A
 
 
 @login_required
+@admin_required
 def api_update_account(account_id: int) -> Any:
     """更新账号"""
     get_db()
@@ -1320,6 +1360,7 @@ def api_update_account(account_id: int) -> Any:
 
 
 @login_required
+@admin_required
 def api_update_account_remark(account_id: int) -> Any:
     """仅更新账号备注，不要求重复提交其他字段。"""
     data = request.get_json(silent=True) or {}
@@ -1413,6 +1454,7 @@ def _api_update_account_status(account_id: int, status: str) -> Any:
 
 
 @login_required
+@admin_required
 def api_batch_update_status() -> Any:
     """批量更新账号状态（用于失效账号治理主动作）。"""
     data = request.get_json(silent=True) or {}
@@ -1504,6 +1546,7 @@ def api_batch_update_status() -> Any:
 
 
 @login_required
+@admin_required
 def api_batch_notification_toggle() -> Any:
     """批量切换账号通知参与开关。"""
     data = request.get_json(silent=True) or {}
@@ -1568,6 +1611,7 @@ def api_batch_notification_toggle() -> Any:
 
 
 @login_required
+@admin_required
 def api_delete_account(account_id: int) -> Any:
     """删除账号"""
     email_addr = ""
@@ -1595,6 +1639,7 @@ def api_delete_account(account_id: int) -> Any:
 
 
 @login_required
+@admin_required
 def api_delete_account_by_email(email_addr: str) -> Any:
     """根据邮箱地址删除账号"""
     if accounts_repo.delete_account_by_email(email_addr):
@@ -1609,6 +1654,7 @@ def api_delete_account_by_email(email_addr: str) -> Any:
 
 
 @login_required
+@admin_required
 def api_batch_delete_accounts() -> Any:
     """
     批量删除账号 API
@@ -1665,6 +1711,7 @@ def api_batch_delete_accounts() -> Any:
 
 
 @login_required
+@admin_required
 def api_batch_manage_tags() -> Any:
     """批量管理账号标签"""
     data = request.json
@@ -1700,6 +1747,7 @@ def api_batch_manage_tags() -> Any:
 
 
 @login_required
+@admin_required
 def api_batch_update_account_group() -> Any:
     """批量更新账号分组"""
     data = request.json
@@ -1782,18 +1830,23 @@ def api_search_accounts() -> Any:
         return jsonify({"success": True, "accounts": []})
 
     db = get_db()
+    owner_scope = _get_owner_scope()
+    owner_cond = " AND a.owner_user_id = ?" if owner_scope is not None else ""
+    params: list[Any] = [f"%{query}%", f"%{query}%", f"%{query}%"]
+    if owner_scope is not None:
+        params.append(owner_scope)
     # 支持搜索邮箱、备注和标签
     cursor = db.execute(
-        """
+        f"""
         SELECT DISTINCT a.*, g.name as group_name, g.color as group_color
         FROM accounts a
         LEFT JOIN groups g ON a.group_id = g.id
         LEFT JOIN account_tags at ON a.id = at.account_id
         LEFT JOIN tags t ON at.tag_id = t.id
-        WHERE a.email LIKE ? OR a.remark LIKE ? OR t.name LIKE ?
+        WHERE (a.email LIKE ? OR a.remark LIKE ? OR t.name LIKE ?){owner_cond}
         ORDER BY a.created_at DESC
     """,
-        (f"%{query}%", f"%{query}%", f"%{query}%"),
+        params,
     )
 
     rows = cursor.fetchall()
@@ -1975,6 +2028,7 @@ def _build_export_text(accounts: list[dict[str, Any]]) -> str:
 
 
 @login_required
+@admin_required
 def api_export_all_accounts() -> Any:
     """导出所有邮箱账号为 TXT 文件（需要二次验证）"""
     from outlook_web.security.auth import (
@@ -2026,6 +2080,7 @@ def api_export_all_accounts() -> Any:
 
 
 @login_required
+@admin_required
 def api_export_selected_accounts() -> Any:
     """导出选中分组的邮箱账号为 TXT 文件（需要二次验证）"""
     from outlook_web.security.auth import (
@@ -2088,6 +2143,7 @@ def api_export_selected_accounts() -> Any:
 
 
 @login_required
+@admin_required
 def api_generate_export_verify_token() -> Any:
     """生成导出验证token（二次验证）"""
     from outlook_web.repositories import settings as settings_repo
@@ -2124,6 +2180,7 @@ REFRESH_LOCK_NAME = "refresh_all_tokens"
 
 
 @login_required
+@admin_required
 def api_refresh_account(account_id: int) -> Any:
     """刷新单个账号的 token"""
     db = get_db()
@@ -2210,6 +2267,7 @@ def api_refresh_account(account_id: int) -> Any:
 
 
 @login_required
+@admin_required
 def api_refresh_all_accounts() -> Any:
     """刷新所有账号的 token（流式响应，实时返回进度）"""
     trace_id_value = None
@@ -2241,12 +2299,14 @@ def api_refresh_all_accounts() -> Any:
 
 
 @login_required
+@admin_required
 def api_retry_refresh_account(account_id: int) -> Any:
     """重试单个失败账号的刷新"""
     return api_refresh_account(account_id)
 
 
 @login_required
+@admin_required
 def api_refresh_failed_accounts() -> Any:
     """重试所有失败的账号"""
     db = get_db()
@@ -2270,6 +2330,7 @@ def api_refresh_failed_accounts() -> Any:
 
 
 @login_required
+@admin_required
 def api_trigger_scheduled_refresh() -> Any:
     """手动触发定时刷新（支持强制刷新）"""
     force = request.args.get("force", "false").lower() == "true"
@@ -2318,18 +2379,24 @@ def api_get_refresh_logs() -> Any:
     db = get_db()
     limit = int(request.args.get("limit", 1000))
     offset = int(request.args.get("offset", 0))
+    owner_scope = _get_owner_scope()
+    owner_cond = " AND a.owner_user_id = ?" if owner_scope is not None else ""
+    params: list[Any] = [limit, offset]
+    if owner_scope is not None:
+        params.insert(0, owner_scope)
 
     cursor = db.execute(
-        """
+        f"""
         SELECT l.*, a.email as account_email
         FROM account_refresh_logs l
         LEFT JOIN accounts a ON l.account_id = a.id
         WHERE l.refresh_type IN ('manual', 'manual_all', 'scheduled', 'retry')
         AND l.created_at >= datetime('now', '-6 months')
+        {owner_cond}
         ORDER BY l.created_at DESC
         LIMIT ? OFFSET ?
     """,
-        (limit, offset),
+        params,
     )
 
     logs = []
@@ -2352,6 +2419,13 @@ def api_get_refresh_logs() -> Any:
 @login_required
 def api_get_account_refresh_logs(account_id: int) -> Any:
     """获取单个账号的刷新历史"""
+    if not _ensure_account_owned(account_id):
+        return build_error_response(
+            "ACCOUNT_NOT_FOUND",
+            "账号不存在",
+            message_en="Account not found",
+            status=404,
+        )
     db = get_db()
     limit = int(request.args.get("limit", 50))
     offset = int(request.args.get("offset", 0))
@@ -2549,6 +2623,16 @@ def api_get_refresh_stats() -> Any:
 @login_required
 def api_telegram_toggle(account_id: int) -> Any:
     """切换账号通知参与开关。兼容旧 Telegram 专用接口路径。"""
+    if not _ensure_account_owned(account_id):
+        error_payload = build_error_payload(
+            "ACCOUNT_NOT_FOUND",
+            "账号不存在",
+            "NotFoundError",
+            404,
+            f"account_id={account_id}",
+            message_en="Account not found",
+        )
+        return jsonify({"success": False, "error": error_payload}), 404
     data = request.get_json(silent=True) or {}
     enabled = bool(data.get("enabled", False))
     success = accounts_repo.toggle_telegram_push(account_id, enabled)
@@ -2579,6 +2663,7 @@ def api_telegram_toggle(account_id: int) -> Any:
 
 
 @login_required
+@admin_required
 def api_refresh_selected_accounts() -> Any:
     """刷新指定账号列表的 token（SSE 流式响应）"""
     data = request.get_json(silent=True) or {}

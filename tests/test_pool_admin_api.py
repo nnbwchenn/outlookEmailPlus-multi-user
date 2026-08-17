@@ -35,7 +35,7 @@ class PoolAdminApiBase(unittest.TestCase):
     def _login(self):
         """登录并返回 session cookie 标记"""
         clear_login_attempts()
-        resp = self.client.post("/login", json={"password": "testpass123"})
+        resp = self.client.post("/login", json={"username": "admin", "password": "testpass123"})
         if resp.status_code != 200:
             raise RuntimeError(f"测试用户登录失败 ({resp.status_code}): {resp.data[:200]}")
         return "loggedin"

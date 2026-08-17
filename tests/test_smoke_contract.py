@@ -15,7 +15,7 @@ class SmokeContractTests(unittest.TestCase):
             clear_login_attempts()
 
     def _login(self, client):
-        resp = client.post("/login", json={"password": "testpass123"})
+        resp = client.post("/login", json={"username": "admin", "password": "testpass123"})
         self.assertEqual(resp.status_code, 200)
         data = resp.get_json()
         self.assertEqual(data.get("success"), True)

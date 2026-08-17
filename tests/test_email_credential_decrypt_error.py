@@ -18,7 +18,7 @@ class EmailCredentialDecryptErrorTests(unittest.TestCase):
             clear_login_attempts()
 
     def _login(self, client, password: str = "testpass123"):
-        resp = client.post("/login", json={"password": password})
+        resp = client.post("/login", json={"username": "admin", "password": password})
         self.assertEqual(resp.status_code, 200)
 
     def _db(self):

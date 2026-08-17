@@ -141,6 +141,52 @@ def reset_login_attempts(ip: str):
         pass
 
 
+def get_current_user() -> dict | None:
+    """返回当前登录用户信息（从 session 读取），未登录返回 None。"""
+    user_id = session.get("user_id")
+    if not user_id:
+        return None
+    return {
+        "id": user_id,
+        "username": session.get("username", ""),
+        "role": session.get("role", "member"),
+        "display_name": session.get("display_name", ""),
+    }
+
+
+def is_admin() -> bool:
+    """当前登录用户是否为主管理员。"""
+    return session.get("role") == "admin"
+
+
+def admin_required(f):
+    """管理员专属装饰器：非管理员返回 403。"""
+
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if not is_admin():
+            if request.is_json or request.path.startswith("/api/"):
+                trace_id_value = None
+                try:
+                    trace_id_value = getattr(g, "trace_id", None)
+                except Exception:
+                    trace_id_value = None
+                payload = build_error_payload(
+                    code="FORBIDDEN",
+                    message="需要管理员权限",
+                    message_en="Admin privileges required",
+                    err_type="ForbiddenError",
+                    status=403,
+                    details="role=member",
+                    trace_id=trace_id_value,
+                )
+                return jsonify({"success": False, "error": payload}), 403
+            return redirect(url_for("pages.login"))
+        return f(*args, **kwargs)
+
+    return decorated_function
+
+
 def login_required(f):
     """登录验证装饰器"""
 

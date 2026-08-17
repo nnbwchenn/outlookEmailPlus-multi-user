@@ -103,7 +103,7 @@ class VersionCheckAPITests(unittest.TestCase):
         sc._version_cache_at = 0.0
 
     def _login(self, client):
-        resp = client.post("/login", json={"password": "testpass123"})
+        resp = client.post("/login", json={"username": "admin", "password": "testpass123"})
         self.assertEqual(resp.status_code, 200)
 
     def test_route_get_version_check(self):
@@ -348,7 +348,7 @@ class AuthProtectionTests(unittest.TestCase):
             clear_login_attempts()
 
     def _login(self, client):
-        resp = client.post("/login", json={"password": "testpass123"})
+        resp = client.post("/login", json={"username": "admin", "password": "testpass123"})
         self.assertEqual(resp.status_code, 200)
 
     def test_banner_in_body_before_app(self):

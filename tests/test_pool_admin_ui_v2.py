@@ -45,7 +45,7 @@ class PoolAdminUIv2Base(unittest.TestCase):
             resp.close()
 
     def _login(self):
-        resp = self.client.post("/login", json={"password": "testpass123"})
+        resp = self.client.post("/login", json={"username": "admin", "password": "testpass123"})
         if resp.status_code != 200:
             raise RuntimeError(f"登录失败 ({resp.status_code})")
 

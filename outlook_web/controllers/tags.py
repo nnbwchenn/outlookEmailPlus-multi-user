@@ -9,7 +9,7 @@ from flask import jsonify, request
 from outlook_web.audit import log_audit
 from outlook_web.errors import build_error_response
 from outlook_web.repositories import tags as tags_repo
-from outlook_web.security.auth import login_required
+from outlook_web.security.auth import admin_required, login_required
 
 
 def sanitize_input(text: str, max_length: int = 500) -> str:
@@ -38,12 +38,14 @@ def sanitize_input(text: str, max_length: int = 500) -> str:
 
 
 @login_required
+@admin_required
 def api_get_tags() -> Any:
     """获取所有标签"""
     return jsonify({"success": True, "tags": tags_repo.get_tags()})
 
 
 @login_required
+@admin_required
 def api_add_tag() -> Any:
     """添加标签"""
     data = request.json
@@ -73,6 +75,7 @@ def api_add_tag() -> Any:
 
 
 @login_required
+@admin_required
 def api_delete_tag(tag_id: int) -> Any:
     """删除标签"""
     if tags_repo.delete_tag(tag_id):

@@ -86,7 +86,7 @@ class TestPerformance(unittest.TestCase):
         # client = app.test_client()
         #
         # # 登录
-        # client.post('/login', data={'password': 'admin123'})
+        # client.post('/login', data={'username': 'admin', 'password': 'admin123'})
         #
         # # 多次测试取平均值
         # times = []
@@ -205,7 +205,7 @@ class TestPerformance(unittest.TestCase):
         # client = app.test_client()
         #
         # # 登录
-        # client.post('/login', data={'password': 'admin123'})
+        # client.post('/login', data={'username': 'admin', 'password': 'admin123'})
         #
         # def make_request():
         #     start_time = time.time()

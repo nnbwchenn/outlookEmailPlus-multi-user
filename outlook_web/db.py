@@ -37,7 +37,9 @@ from outlook_web.security.crypto import (
 # v22：2026-04-16 邮箱池项目维度成功复用（accounts.claimed_project_key + account_project_usage.success_*）
 # v23：2026-04-19 数据概览大盘（verification_extract_logs + overview 兼容字段）
 # v24：2026-07-01 临时邮箱接入邮箱池（temp_emails 新增池生命周期字段；临时邮箱功能已移除，升级时物理删除 temp_emails/temp_email_messages 表）
-DB_SCHEMA_VERSION = 24
+# v25：2026-08-17 多用户模式 — users 表、accounts.owner_user_id、groups.owner_user_id、
+#      user_notification_settings 表；login_password 自动迁移为 admin 用户（密码不变）
+DB_SCHEMA_VERSION = 25
 DB_SCHEMA_VERSION_KEY = "db_schema_version"
 DB_SCHEMA_LAST_UPGRADE_TRACE_ID_KEY = "db_schema_last_upgrade_trace_id"
 DB_SCHEMA_LAST_UPGRADE_ERROR_KEY = "db_schema_last_upgrade_error"
@@ -415,6 +417,57 @@ def init_db(database_path: str | None = None):
         if "trace_id" not in audit_columns:
             cursor.execute("ALTER TABLE audit_logs ADD COLUMN trace_id TEXT")
 
+        # ============ v25: 多用户模式 ============
+        # 用户表（admin=主管理员 / member=普通成员）
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS users (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                username TEXT UNIQUE NOT NULL,
+                password_hash TEXT NOT NULL,
+                role TEXT NOT NULL DEFAULT 'member',
+                display_name TEXT DEFAULT '',
+                status TEXT NOT NULL DEFAULT 'active',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+            """)
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_users_username
+            ON users(username)
+            """)
+
+        # 账号归属（owner_user_id NULL = 管理员全局；member 仅可见 owner_user_id = 自己）
+        cursor.execute("PRAGMA table_info(accounts)")
+        accounts_columns_v25 = [col[1] for col in cursor.fetchall()]
+        if "owner_user_id" not in accounts_columns_v25:
+            cursor.execute("ALTER TABLE accounts ADD COLUMN owner_user_id INTEGER DEFAULT NULL")
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_accounts_owner_user_id
+            ON accounts(owner_user_id)
+            """)
+
+        # 分组归属（owner_user_id NULL = 管理员全局分组）
+        cursor.execute("PRAGMA table_info(groups)")
+        groups_columns_v25 = [col[1] for col in cursor.fetchall()]
+        if "owner_user_id" not in groups_columns_v25:
+            cursor.execute("ALTER TABLE groups ADD COLUMN owner_user_id INTEGER DEFAULT NULL")
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_groups_owner_user_id
+            ON groups(owner_user_id)
+            """)
+
+        # 成员通知设置（member 独立于管理员全局通知）
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS user_notification_settings (
+                user_id INTEGER NOT NULL,
+                channel TEXT NOT NULL,
+                config_json TEXT NOT NULL DEFAULT '{}',
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (user_id, channel),
+                FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+            )
+            """)
+
         # 默认分组
         cursor.execute("""
             INSERT OR IGNORE INTO groups (name, description, color)
@@ -443,6 +496,29 @@ def init_db(database_path: str | None = None):
                 """,
                 (hashed_password,),
             )
+
+        # v25: 把 login_password 迁移为 admin 用户（密码保持不变，仅首次迁移）
+        pw_row = cursor.execute("SELECT value FROM settings WHERE key = 'login_password'").fetchone()
+        admin_exists = cursor.execute(
+            "SELECT id FROM users WHERE username = 'admin' LIMIT 1"
+        ).fetchone()
+        if pw_row and pw_row[0] and not admin_exists:
+            stored_hash = pw_row[0]
+            # 兼容：如果还是明文（理论上 init 时已哈希），此处兜底哈希
+            if not is_password_hashed(stored_hash):
+                stored_hash = hash_password(stored_hash)
+                cursor.execute(
+                    "UPDATE settings SET value = ? WHERE key = 'login_password'",
+                    (stored_hash,),
+                )
+            cursor.execute(
+                """
+                INSERT INTO users (username, password_hash, role, display_name, status)
+                VALUES ('admin', ?, 'admin', '管理员', 'active')
+                """,
+                (stored_hash,),
+            )
+            print("[多用户] 已创建默认管理员账号：admin（密码沿用原登录密码）")
 
         # v0.3: 设置页面 Tab 重构 — CF Worker 独立域名 key
         cursor.execute("""

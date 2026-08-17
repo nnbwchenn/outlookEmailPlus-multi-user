@@ -45,7 +45,7 @@ class Issue60CompatibilityRegressionTests(unittest.TestCase):
             settings_repo.set_setting("external_api_disable_pool_stats", "false")
 
     def _login(self) -> None:
-        resp = self.client.post("/login", json={"password": "testpass123"})
+        resp = self.client.post("/login", json={"username": "admin", "password": "testpass123"})
         self.assertEqual(resp.status_code, 200)
 
     @staticmethod

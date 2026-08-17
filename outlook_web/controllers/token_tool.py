@@ -25,7 +25,7 @@ from outlook_web.audit import log_audit
 from outlook_web.errors import build_error_response
 from outlook_web.repositories import accounts as accounts_repo
 from outlook_web.repositories import settings as settings_repo
-from outlook_web.security.auth import login_required
+from outlook_web.security.auth import admin_required, login_required
 from outlook_web.services import graph as graph_service
 from outlook_web.services import oauth_tool as oauth_tool_service
 
@@ -64,12 +64,14 @@ def _save_validation_guidance(error_msg: str) -> str | None:
 
 
 @login_required
+@admin_required
 def render_page() -> Any:
     _ensure_oauth_tool_enabled()
     return render_template("token_tool.html")
 
 
 @login_required
+@admin_required
 def prepare_oauth() -> Any:
     _ensure_oauth_tool_enabled()
     data = request.get_json(silent=True) or {}
@@ -133,6 +135,7 @@ def handle_callback() -> Any:
 
 
 @login_required
+@admin_required
 def exchange_token() -> Any:
     _ensure_oauth_tool_enabled()
     data = request.get_json(silent=True) or {}
@@ -198,6 +201,7 @@ def exchange_token() -> Any:
 
 
 @login_required
+@admin_required
 def save_to_account() -> Any:
     _ensure_oauth_tool_enabled()
     data = request.get_json(silent=True) or {}
@@ -325,6 +329,7 @@ def save_to_account() -> Any:
 
 
 @login_required
+@admin_required
 def get_account_list() -> Any:
     _ensure_oauth_tool_enabled()
     accounts = accounts_repo.load_accounts()
@@ -342,6 +347,7 @@ def get_account_list() -> Any:
 
 
 @login_required
+@admin_required
 def get_config() -> Any:
     _ensure_oauth_tool_enabled()
     scope_value = settings_repo.get_oauth_tool_scope()
@@ -363,6 +369,7 @@ def get_config() -> Any:
 
 
 @login_required
+@admin_required
 def save_config() -> Any:
     _ensure_oauth_tool_enabled()
     data = request.get_json(silent=True) or {}

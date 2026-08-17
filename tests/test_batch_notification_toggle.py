@@ -23,7 +23,7 @@ def _get_app():
 
 
 def _login(client):
-    resp = client.post("/login", json={"password": "testpass123"})
+    resp = client.post("/login", json={"username": "admin", "password": "testpass123"})
     assert resp.status_code == 200, f"Login failed: {resp.data}"
 
 

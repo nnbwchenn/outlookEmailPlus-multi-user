@@ -26,7 +26,7 @@ class TestAutoImport(unittest.TestCase):
             db.commit()
 
     def _login(self, client):
-        resp = client.post("/login", json={"password": "testpass123"})
+        resp = client.post("/login", json={"username": "admin", "password": "testpass123"})
         self.assertEqual(resp.status_code, 200)
 
     def _import_auto(self, client, account_string, **kwargs):

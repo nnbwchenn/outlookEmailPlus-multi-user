@@ -22,7 +22,7 @@ class RefreshOutlookOnlyTests(unittest.TestCase):
         self._deactivate_existing_accounts()
 
     def _login(self, client, password: str = "testpass123"):
-        resp = client.post("/login", json={"password": password})
+        resp = client.post("/login", json={"username": "admin", "password": password})
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(resp.get_json().get("success"), True)
 

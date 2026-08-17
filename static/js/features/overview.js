@@ -25,6 +25,22 @@ function initOverview() {
     if (!page) return;
     syncOverviewStaticText();
 
+    // 多用户：member 隐藏「邮箱池」「系统活动」tab（邮箱池为管理员能力，系统活动为全局运营视图）
+    const currentUser = window.__currentUser;
+    if (currentUser && currentUser.role !== 'admin') {
+        document.querySelectorAll('.ov-tab[data-tab="pool"], .ov-tab[data-tab="activity"]').forEach((tab) => {
+            tab.style.display = 'none';
+        });
+        document.querySelectorAll('.ov-tab-pane[data-tab="pool"], .ov-tab-pane[data-tab="activity"]').forEach((pane) => {
+            pane.style.display = 'none';
+        });
+        // 若当前激活的是隐藏 tab，切回总览
+        const activeTab = document.querySelector('.ov-tab.active');
+        if (activeTab && ['pool', 'activity'].includes(activeTab.dataset.tab)) {
+            switchOverviewTab('summary');
+        }
+    }
+
     // 跨断点切换（平板/电脑 ↔ 手机）时重置 Tab 行滚动位置：
     // 避免小屏下容器残留 scrollLeft 导致「总览」等首项按钮被裁切在左侧。
     if (!window.__overviewResizeBound) {

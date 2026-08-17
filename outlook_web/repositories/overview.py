@@ -167,10 +167,17 @@ def get_overview_summary(conn: sqlite3.Connection | None = None, *, owner_user_i
             (today_start,),
         ).fetchone()
 
-    return {
-        "account_status": account_status,
-        "pool_snapshot": pool_snapshot,
-        "refresh_health": {
+    # member 无刷新权限：刷新健康度为管理员全局行为，对 member 返回零值
+    if owner_user_id is not None:
+        refresh_health = {
+            "last_run_at": None,
+            "last_success_count": 0,
+            "last_fail_count": 0,
+            "last_duration_s": 0,
+            "success_rate_7d": 0.0,
+        }
+    else:
+        refresh_health = {
             "last_run_at": refresh_last["started_at"] if refresh_last else None,
             "last_success_count": int(refresh_last["success_count"] or 0) if refresh_last else 0,
             "last_fail_count": int(refresh_last["failed_count"] or 0) if refresh_last else 0,
@@ -179,7 +186,12 @@ def get_overview_summary(conn: sqlite3.Connection | None = None, *, owner_user_i
                 int(refresh_7d["success_sum"] or 0) if refresh_7d else 0,
                 int(refresh_7d["total_sum"] or 0) if refresh_7d else 0,
             ),
-        },
+        }
+
+    return {
+        "account_status": account_status,
+        "pool_snapshot": pool_snapshot,
+        "refresh_health": refresh_health,
         "kpi": {
             "verification_extracted": int(today_logs["verification_count"] or 0) if today_logs else 0,
         },

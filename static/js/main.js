@@ -30,17 +30,11 @@
 
             const isAdmin = user.role === 'admin';
 
-            // 侧边栏 admin 专属菜单：号池管理 / 刷新日志 / 系统设置 / 审计日志 / Token 工具
-            const adminSelectors = [
-                '.nav-item[data-page="pool-admin"]',
-                '.nav-item[data-page="refresh-log"]',
-                '.nav-item[data-page="settings"]',
-                '.nav-item[data-page="audit"]',
-                '.nav-item[data-page="users"]',
-            ];
+            // 侧边栏 admin 专属菜单：号池管理 / 刷新日志 / 审计日志 / 用户管理 / Token 工具
+            // （系统设置对 member 开放，仅显示通知配置）
             document.querySelectorAll('.nav-item').forEach(item => {
                 const page = item.dataset.page;
-                const isAdminItem = ['pool-admin', 'refresh-log', 'settings', 'audit', 'users'].includes(page);
+                const isAdminItem = ['pool-admin', 'refresh-log', 'audit', 'users'].includes(page);
                 const isTokenTool = item.getAttribute('onclick') && item.getAttribute('onclick').includes('token-tool');
                 if (isAdminItem || isTokenTool) {
                     item.style.display = isAdmin ? '' : 'none';
@@ -525,7 +519,7 @@
 
         function navigate(page) {
             const user = window.__currentUser;
-            if (user && user.role !== 'admin' && ['pool-admin', 'refresh-log', 'settings', 'audit', 'users'].includes(page)) {
+            if (user && user.role !== 'admin' && ['pool-admin', 'refresh-log', 'audit', 'users'].includes(page)) {
                 showToast(translateAppTextLocal('需要管理员权限'), 'error');
                 page = 'mailbox';
             }
@@ -596,13 +590,14 @@
                 if (page === 'mailbox') {
                     const switcherHtml = mailboxViewModeTemplate ? mailboxViewModeTemplate.innerHTML.trim() : '';
                     const isCompactMode = mailboxViewMode === 'compact';
+                    const isAdminView = isAdminUser();
                     actionsEl.innerHTML = isCompactMode ? `
                         ${switcherHtml}
                     ` : `
                         ${switcherHtml}
-                        <button class="btn-inline primary" onclick="showAddAccountModal()">＋ 添加账号</button>
-                        <button class="btn-inline ghost" onclick="showExportModal()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="emoji-svg"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>导出</button>
-                        <button class="btn-inline ghost" onclick="showRefreshModal()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="emoji-svg"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>全量刷新 Token</button>
+                        ${isAdminView ? '<button class="btn-inline primary" onclick="showAddAccountModal()">＋ 添加账号</button>' : ''}
+                        ${isAdminView ? '<button class="btn-inline ghost" onclick="showExportModal()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="emoji-svg"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>导出</button>' : ''}
+                        ${isAdminView ? '<button class="btn-inline ghost" onclick="showRefreshModal()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="emoji-svg"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>全量刷新 Token</button>' : ''}
                     `;
                     actionsEl.classList.toggle('topbar-actions-compact', isCompactMode);
                     if (subtitleEl) {
@@ -1782,8 +1777,111 @@ ${details}
             }
         }
 
+        // member：渲染自己的通知设置（仅通知配置，不暴露全局设置）
+        async function loadMemberNotificationSettings() {
+            try {
+                const [notifResp, accResp] = await Promise.all([
+                    fetch('/api/me/notifications'),
+                    fetch('/api/me/accounts')
+                ]);
+                const notifData = await notifResp.json();
+                const accData = await accResp.json();
+                if (!notifData.success) return;
+
+                const container = document.getElementById('memberNotificationContainer');
+                if (!container) return;
+
+                const notif = notifData.notifications || {};
+                const webhook = notif.webhook || {};
+                const telegram = notif.telegram || {};
+                const accounts = (accData.accounts || []);
+
+                container.innerHTML = `
+                    <div class="card" style="margin-bottom:16px;">
+                        <div class="card-header">
+                            <div class="card-title"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="emoji-svg"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>我的通知设置</div>
+                        </div>
+                        <div class="card-body" style="display:flex;flex-direction:column;gap:16px;">
+                            <div>
+                                <div style="font-weight:600;margin-bottom:6px;">Webhook 通知</div>
+                                <div style="display:flex;flex-direction:column;gap:8px;max-width:520px;">
+                                    <label style="display:flex;align-items:center;gap:8px;font-size:0.85rem;">
+                                        <input type="checkbox" id="memberWebhookEnabled" ${webhook.enabled ? 'checked' : ''}>
+                                        启用 Webhook 通知（新邮件推送到你的 Webhook）
+                                    </label>
+                                    <input type="text" class="form-input" id="memberWebhookUrl" placeholder="https://example.com/hook" value="${escapeHtml(webhook.url || '')}">
+                                    <button class="btn btn-sm btn-primary" style="align-self:flex-start;" onclick="saveMemberNotifications()">保存通知设置</button>
+                                </div>
+                            </div>
+                            <div>
+                                <div style="font-weight:600;margin-bottom:6px;">我的邮箱（${accounts.length} 个）</div>
+                                <div style="font-size:0.8rem;color:var(--text-muted);margin-bottom:8px;">以下邮箱收到新邮件时会触发通知（通知参与开关由管理员在账号管理中控制）</div>
+                                <div style="max-height:260px;overflow-y:auto;border:1px solid var(--border-light);border-radius:6px;">
+                                    ${accounts.length === 0
+                                        ? '<div style="padding:16px;text-align:center;color:var(--text-muted);font-size:0.8rem;">尚未被分配邮箱</div>'
+                                        : accounts.map(a => `
+                                            <div style="display:flex;align-items:center;gap:8px;padding:8px 12px;border-bottom:1px solid var(--border-light);font-size:0.85rem;">
+                                                <span>${escapeHtml(a.email)}</span>
+                                                <span style="margin-left:auto;font-size:0.72rem;color:${a.telegram_push_enabled ? 'var(--clr-jade)' : 'var(--text-muted)'};">
+                                                    ${a.telegram_push_enabled ? '通知已开启' : '通知未开启'}
+                                                </span>
+                                            </div>
+                                        `).join('')}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            } catch (error) {
+                console.error('loadMemberNotificationSettings error:', error);
+            }
+        }
+
+        // member：保存自己的通知设置
+        async function saveMemberNotifications() {
+            const enabled = document.getElementById('memberWebhookEnabled')?.checked || false;
+            const url = (document.getElementById('memberWebhookUrl')?.value || '').trim();
+            if (enabled && !url) {
+                showToast(translateAppTextLocal('启用 Webhook 通知时必须填写 URL'), 'error');
+                return;
+            }
+            try {
+                const response = await fetch('/api/me/notifications', {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ channel: 'webhook', enabled, config: { url, enabled } })
+                });
+                const data = await response.json();
+                if (data.success) {
+                    showToast(translateAppTextLocal('通知设置已保存'), 'success');
+                } else {
+                    handleApiError(data, '保存失败');
+                }
+            } catch (error) {
+                showToast(translateAppTextLocal('保存失败'), 'error');
+            }
+        }
+
         // 加载设置
         async function loadSettings() {
+            const user = window.__currentUser;
+            // member：仅渲染通知设置
+            if (user && user.role !== 'admin') {
+                const page = document.getElementById('page-settings');
+                if (page) {
+                    // 隐藏全局设置 tab 区，注入成员通知容器
+                    page.querySelectorAll('.settings-tab, .settings-tab-pane, .settings-save-row').forEach(el => { el.style.display = 'none'; });
+                    let container = document.getElementById('memberNotificationContainer');
+                    if (!container) {
+                        container = document.createElement('div');
+                        container.id = 'memberNotificationContainer';
+                        const cardBody = page.querySelector('.card-body') || page;
+                        cardBody.appendChild(container);
+                    }
+                    await loadMemberNotificationSettings();
+                }
+                return;
+            }
             try {
                 const response = await fetch('/api/settings');
                 const data = await response.json();

@@ -575,7 +575,7 @@ def list_messages_for_external(
     )
 
 
-def filter_messages(
+def filter_messages(  # noqa: C901 - 多条件过滤（from/subject/since/baseline），分支较多但语义简单
     emails: list[dict[str, Any]],
     *,
     from_contains: str = "",
@@ -1240,7 +1240,7 @@ def get_verification_result(
     )
 
 
-def wait_for_message(
+def wait_for_message(  # noqa: C901 - 轮询等待循环含校验/重试/超时分支，业务逻辑稳定且测试覆盖
     *,
     email_addr: str,
     timeout_seconds: int = 30,

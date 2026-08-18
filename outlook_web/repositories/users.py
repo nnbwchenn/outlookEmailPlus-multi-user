@@ -11,17 +11,47 @@ from outlook_web.db import create_sqlite_connection, get_db
 from outlook_web.security.crypto import hash_password, verify_password
 
 
+def _users_table_missing(db) -> bool:
+    """检测 users 表是否存在（多用户模式核心表）。"""
+    try:
+        db.execute("SELECT 1 FROM users LIMIT 1").fetchone()
+        return False
+    except Exception:
+        return True
+
+
+def _ensure_schema(db) -> None:
+    """users 表缺失时重建数据库 schema（幂等，不覆盖已有数据）。
+
+    场景：数据库文件被测试或外部过程重建为空库、旧版本库未迁移等，
+    此时登录/用户查询不应崩溃，自动补齐表结构。
+    """
+    if not _users_table_missing(db):
+        return
+    try:
+        from outlook_web import config as app_config
+        from outlook_web.db import init_db
+
+        init_db(app_config.get_database_path())
+        db.commit()
+    except Exception:
+        pass
+
+
 def _conn():
-    """获取数据库连接；若 Flask g 连接已关闭（跨 test_client 场景），回退新建连接。"""
+    """获取数据库连接；users 表缺失时自动重建 schema。"""
     try:
         db = get_db()
         try:
             db.execute("SELECT 1").fetchone()
-            return db
         except Exception:
-            return create_sqlite_connection()
+            db = create_sqlite_connection()
+        _ensure_schema(db)
+        return db
     except RuntimeError:
-        return create_sqlite_connection()
+        db = create_sqlite_connection()
+        _ensure_schema(db)
+        return db
 
 
 def get_user_by_username(username: str) -> dict[str, Any] | None:

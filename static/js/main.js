@@ -1865,19 +1865,21 @@ ${details}
         // 加载设置
         async function loadSettings() {
             const user = window.__currentUser;
-            // member：仅渲染通知设置
+            // member：仅渲染通知设置（隐藏全部 admin 设置，注入 member 通知容器）
             if (user && user.role !== 'admin') {
                 const page = document.getElementById('page-settings');
                 if (page) {
-                    // 隐藏全局设置 tab 区，注入成员通知容器
-                    page.querySelectorAll('.settings-tab, .settings-tab-pane, .settings-save-row').forEach(el => { el.style.display = 'none'; });
+                    // 隐藏 admin 设置外壳（tab-nav + tab-content + save-row）
+                    page.querySelectorAll('.settings-card-shell, .settings-tab-nav, .settings-tab-content, .settings-tab, .settings-tab-pane, .settings-save-row, .card').forEach(el => { el.style.display = 'none'; });
+                    // 注入 member 通知容器
                     let container = document.getElementById('memberNotificationContainer');
                     if (!container) {
                         container = document.createElement('div');
                         container.id = 'memberNotificationContainer';
-                        const cardBody = page.querySelector('.card-body') || page;
-                        cardBody.appendChild(container);
+                        container.style.padding = '0';
+                        page.appendChild(container);
                     }
+                    container.style.display = 'block';
                     await loadMemberNotificationSettings();
                 }
                 return;

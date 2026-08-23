@@ -12,6 +12,7 @@ from outlook_web.audit import log_audit
 from outlook_web.db import get_db
 from outlook_web.errors import build_error_payload
 from outlook_web.repositories import external_api_keys as external_api_keys_repo
+from outlook_web.repositories.external_api_keys import ExternalApiKeyNameConflictError
 from outlook_web.repositories import settings as settings_repo
 from outlook_web.repositories import users as users_repo
 from outlook_web.security.auth import admin_required, login_required
@@ -62,19 +63,11 @@ def _parse_allowed_emails_input(raw: Any) -> list[str]:
     return result
 
 
-def _parse_bool_input(raw: Any, *, default: bool = False) -> bool:
-    if raw is None:
+def _coerce_int(raw: Any, default: int) -> int:
+    try:
+        return int(raw)
+    except (TypeError, ValueError):
         return default
-    if isinstance(raw, bool):
-        return raw
-    if isinstance(raw, (int, float)):
-        return bool(raw)
-    text = str(raw).strip().lower()
-    if text in ("true", "1", "yes", "on"):
-        return True
-    if text in ("false", "0", "no", "off"):
-        return False
-    return default
 
 
 def _coerce_int_range(raw: Any, default: int, *, minimum: int, maximum: int) -> int:
@@ -149,12 +142,12 @@ def api_get_settings() -> Any:
         "enable_scheduled_refresh": all_settings.get("enable_scheduled_refresh", "true"),
         # 轮询配置
         "enable_auto_polling": all_settings.get("enable_auto_polling", "false") == "true",
-        "polling_interval": int(all_settings.get("polling_interval", "10")),
-        "polling_count": int(all_settings.get("polling_count", "5")),
+        "polling_interval": _coerce_int(all_settings.get("polling_interval"), 10),
+        "polling_count": _coerce_int(all_settings.get("polling_count"), 5),
         # [Phase 3 deprecated] 简洁模式自动轮询配置 — 保留读取，向后兼容
         "enable_compact_auto_poll": all_settings.get("enable_compact_auto_poll", "false") == "true",
-        "compact_poll_interval": int(all_settings.get("compact_poll_interval", "10")),
-        "compact_poll_max_count": int(all_settings.get("compact_poll_max_count", "5")),
+        "compact_poll_interval": _coerce_int(all_settings.get("compact_poll_interval"), 10),
+        "compact_poll_max_count": _coerce_int(all_settings.get("compact_poll_max_count"), 5),
         "email_notification_enabled": all_settings.get("email_notification_enabled", "false").lower() == "true",
         "email_notification_recipient": all_settings.get("email_notification_recipient", ""),
         "webhook_notification_enabled": settings_repo.get_webhook_notification_enabled(),
@@ -166,7 +159,7 @@ def api_get_settings() -> Any:
     login_password_value = all_settings.get("login_password") or ""
     admin_user = users_repo.get_user_by_username("admin")
     external_api_key_value = settings_repo.get_external_api_key()
-    external_api_keys = external_api_keys_repo.list_external_api_keys(include_disabled=True)
+    external_api_keys = external_api_keys_repo.list_external_api_keys(include_disabled=True, unowned_only=True)
     usage_summary = external_api_keys_repo.get_external_api_usage_summary(
         [item.get("consumer_key") or "" for item in external_api_keys]
     )
@@ -523,7 +516,7 @@ def api_update_settings() -> Any:
             errors.append("external_api_keys 必须是数组")
         else:
             existing_keys = {
-                int(item["id"]): item for item in external_api_keys_repo.list_external_api_keys(include_disabled=True)
+                _coerce_int(item["id"], -1): item for item in external_api_keys_repo.list_external_api_keys(include_disabled=True, unowned_only=True)
             }
             normalized_items: list[dict[str, Any]] = []
             seen_names: set[str] = set()
@@ -579,15 +572,18 @@ def api_update_settings() -> Any:
                         "allowed_emails": allowed_emails,
                         "pool_access": _parse_bool_input(item.get("pool_access"), default=False),
                         "enabled": _parse_bool_input(item.get("enabled"), default=True),
+                        "expires_at": str(item.get("expires_at") or "").strip() or None,
                     }
                 )
 
             if not errors:
-                queue_operation(
-                    lambda normalized_items=normalized_items: external_api_keys_repo.replace_external_api_keys(
-                        normalized_items, commit=False
-                    )
-                )
+                def _replace_items(normalized_items=normalized_items):
+                    try:
+                        return external_api_keys_repo.replace_external_api_keys(normalized_items, commit=False)
+                    except ExternalApiKeyNameConflictError:
+                        raise
+
+                queue_operation(_replace_items)
                 updated.append("对外 API 多 Key 配置")
 
     # P1：公网模式安全配置
@@ -865,9 +861,20 @@ def api_update_settings() -> Any:
             db.execute("BEGIN")
             for op in pending_operations:
                 result = op()
-                if result is False:
+                if result is not None and not result:
                     raise RuntimeError("settings_update_failed")
             db.commit()
+        except ExternalApiKeyNameConflictError:
+            try:
+                db.rollback()
+            except Exception:
+                pass
+            return _json_error(
+                "EXTERNAL_API_KEY_NAME_CONFLICT",
+                "已存在同名 API Key",
+                status=409,
+                message_en="An API key with this name already exists",
+            )
         except Exception:
             try:
                 db.rollback()
@@ -904,7 +911,7 @@ def api_update_settings() -> Any:
                 if scheduler:
                     # FD-00007 / TDD-00007：调度器 Job 在后台线程运行，必须传入真实 Flask app 实例；
                     # 避免将 current_app(LocalProxy) 直接作为 job 参数，导致后续执行时报“Working outside of application context”。
-                    app_obj = current_app._get_current_object()
+                    app_obj = current_app._get_current_object()  # type: ignore[attr-defined]
                     scheduler_service.configure_scheduler_jobs(
                         scheduler,
                         app_obj,
@@ -1035,7 +1042,7 @@ def api_test_webhook() -> Any:
     try:
         result = webhook_push.send_test_webhook_message()
     except webhook_push.WebhookPushError as exc:
-        details_text = str(exc.details or "").strip()
+        details_text = str(exc.details).strip() if exc.details else ""
         log_audit(
             "webhook_notification_test",
             "settings",
@@ -1060,6 +1067,20 @@ def api_test_webhook() -> Any:
             "url": safe_url,
         }
     )
+
+
+@login_required
+@admin_required
+def api_list_verification_ai_models() -> Any:
+    """拉取 OpenAI 兼容服务的可用模型列表（上游 v2.9.x）。"""
+    data = request.get_json(silent=True) or {}
+    from outlook_web.repositories import settings as settings_repo
+    from outlook_web.services.verification_extractor import list_verification_ai_models
+
+    base_url = str(data.get("base_url") or settings_repo.get_verification_ai_base_url() or "").strip()
+    api_key = str(data.get("api_key") or settings_repo.get_verification_ai_api_key() or "").strip()
+    result = list_verification_ai_models(base_url, api_key, timeout=8)
+    return jsonify(result)
 
 
 @login_required

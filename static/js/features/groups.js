@@ -263,7 +263,6 @@
 
             container.innerHTML = pageAccounts.map((acc, index) => {
                 const isChecked = selectedAccountIds.has(acc.id);
-                const initial = (acc.email || '?')[0].toUpperCase();
                 const supportsTokenRefresh = isRefreshableOutlookAccount(acc);
                 const isFailed = supportsTokenRefresh && acc.last_refresh_status === 'failed';
                 const defaultMethodLabel = supportsTokenRefresh ? 'Graph' : 'IMAP';
@@ -274,37 +273,44 @@
                     ? !!acc.notification_enabled
                     : !!acc.telegram_push_enabled;
 
-                let tokenBadge = `<span class="badge badge-gray">IMAP</span>`;
+                // Token 状态圆点：绿=有效 红=不可用 琥珀=即将过期；未刷新过/IMAP 不显示
+                let statusDot = '';
+                let statusTitle = '';
                 if (supportsTokenRefresh) {
-                    tokenBadge = `<span class="badge badge-gray">– ${translateAppTextLocal('未知')}</span>`;
-                    if (acc.token_status === 'valid') {
-                        tokenBadge = `<span class="badge badge-green">✓ ${translateAppTextLocal('有效')}</span>`;
-                    } else if (acc.token_status === 'invalid' || acc.token_status === 'expired') {
-                        tokenBadge = `<span class="badge badge-red">✗ ${translateAppTextLocal('过期')}</span>`;
-                    } else if (acc.token_status === 'expiring') {
-                        tokenBadge = `<span class="badge badge-gold">⚠ ${translateAppTextLocal('即将过期')}</span>`;
+                    const dotMap = {
+                        valid: ['dot-green', translateAppTextLocal('Token 有效')],
+                        invalid: ['dot-red', translateAppTextLocal('Token 不可用')],
+                        expired: ['dot-red', translateAppTextLocal('Token 已过期')],
+                        expiring: ['dot-amber', translateAppTextLocal('Token 即将过期')],
+                    };
+                    const mapped = dotMap[acc.token_status];
+                    if (mapped) {
+                        statusDot = `<span class="token-status-dot ${mapped[0]}"></span>`;
+                        statusTitle = mapped[1];
                     }
                 }
 
                 return `
                 <div class="account-card ${currentAccount === acc.email ? 'active' : ''}"
                      onclick="selectAccount('${escapeJs(acc.email)}')">
-                    <div class="account-token-badge">${tokenBadge}</div>
                     <div class="account-card-top">
                         <input type="checkbox" class="account-select-checkbox" value="${acc.id}"
                                ${isChecked ? 'checked' : ''}
                                onclick="event.stopPropagation()"
                                onchange="event.stopPropagation(); handleAccountSelectionChange(${acc.id}, this.checked)">
-                        <div class="account-avatar" style="background: linear-gradient(135deg, ${gradient[0]}, ${gradient[1]})">${initial}</div>
                         <div class="account-info">
-                            <div class="account-email"
-                                 onclick="event.stopPropagation(); copyEmail('${escapeJs(acc.email)}')"
-                                 title="${escapeHtml(translateAppTextLocal('点击复制邮箱地址'))}"
-                                 style="${isFailed ? 'color:var(--clr-danger);' : ''}cursor:pointer;">
-                                ${escapeHtml(acc.email)}
+                            <div class="account-email-row">
+                                ${statusDot ? `${statusDot.replace('<span ', `<span title="${statusTitle}" `)}` : ''}
+                                <div class="account-email"
+                                     onclick="event.stopPropagation(); copyEmail('${escapeJs(acc.email)}')"
+                                     title="${escapeHtml(translateAppTextLocal('点击复制邮箱地址'))}"
+                                     style="${isFailed ? 'color:var(--clr-danger);' : ''}cursor:pointer;">
+                                    ${escapeHtml(acc.email)}
+                                </div>
                             </div>
                             ${acc.remark && acc.remark.trim() ? `<div style="font-size:0.72rem;color:var(--text-muted);margin-top:2px;"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="emoji-svg"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg> ${escapeHtml(translateAppTextLocal('备注'))}: ${escapeHtml(acc.remark)}</div>` : ''}
                             <div style="display:flex;flex-wrap:wrap;gap:3px;margin-top:3px;">
+                                <span class="account-api-tag" title="${escapeHtml(translateAppTextLocal('收信通道'))}">${acc.method || defaultMethodLabel}</span>
                                 ${providerTagHtml}
                                 ${(acc.tags || []).map(tag => `<span class="tag" style="background-color:${tag.color};color:white;">${escapeHtml(tag.name)}</span>`).join('')}
                                 ${notificationEnabled ? `<span class="tag tg-push-tag" onclick="event.stopPropagation(); toggleTelegramPush(${acc.id}, false)" title="${escapeHtml(translateAppTextLocal('点击关闭该邮箱通知参与'))}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="emoji-svg"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg> ${escapeHtml(translateAppTextLocal('通知'))}</span>` : ''}
@@ -313,7 +319,6 @@
                     </div>
                     <div class="account-card-bottom">
                         <div class="account-meta">
-                            <span class="account-api-tag">${acc.method || defaultMethodLabel}</span>
                             <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="emoji-svg"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg> ${formatRelativeTime(acc.last_refresh_at)}</span>
                             ${isFailed ? `<button class="btn btn-sm btn-danger" onclick="event.stopPropagation(); showRefreshError(${acc.id}, '${escapeJs(acc.last_refresh_error || '未知错误')}', '${escapeJs(acc.email)}', '${escapeJs(acc.account_type || 'outlook')}', '${escapeJs(acc.provider || 'outlook')}')" style="padding:1px 6px;font-size:0.65rem;">${escapeHtml(translateAppTextLocal('查看错误'))}</button>` : ''}
                         </div>
@@ -874,7 +879,7 @@
             // 禁用按钮并显示加载状态
             const originalContent = buttonElement.innerHTML;
             buttonElement.disabled = true;
-            buttonElement.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="emoji-svg"><path d="M8 2h8"/><path d="M9 2v1.34a2 2 0 0 1-.6 1.42L6 7a2 2 0 0 0-.6 1.42V9a2 2 0 0 0 .6 1.42L9 14v1a2 2 0 0 0 .6 1.42l2.4 2.4"/><path d="M16 2v1.34a2 2 0 0 0 .6 1.42L18 7a2 2 0 0 1 .6 1.42V9a2 2 0 0 1-.6 1.42L16 14"/><path d="M16 17v4l-4-2v-2"/></svg>';
+            buttonElement.innerHTML = '<span class="btn-spinner"></span>';
             buttonElement.style.opacity = '0.6';
             buttonElement.style.cursor = 'wait';
 
@@ -950,12 +955,12 @@
                 return false;
             } finally {
                 verificationCopyInFlight.delete(requestKey);
-                // 延迟恢复按钮状态
+                // 延迟恢复按钮状态（保留短暂的成功/失败反馈窗口）
                 setTimeout(() => {
                     buttonElement.disabled = false;
                     buttonElement.innerHTML = originalContent;
                     buttonElement.style.cursor = 'pointer';
-                }, 1500);
+                }, 500);
             }
         }
 

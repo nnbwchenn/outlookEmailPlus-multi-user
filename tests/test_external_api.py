@@ -53,6 +53,15 @@ class ExternalApiBaseTest(unittest.TestCase):
                 enabled=enabled,
             )
 
+    def _set_group_proxy(self, email_addr: str, proxy_url: str) -> None:
+        with self.app.app_context():
+            from outlook_web.db import get_db
+
+            db = get_db()
+            db.execute("UPDATE groups SET proxy_url = ? WHERE id = (SELECT group_id FROM accounts WHERE email = ?)",
+                       (proxy_url, email_addr))
+            db.commit()
+
     def _insert_outlook_account(self, email_addr: str | None = None) -> str:
         email_addr = email_addr or f"{uuid.uuid4().hex}@extapi.test"
         with self.app.app_context():
@@ -1312,8 +1321,9 @@ class ExternalApiMessageErrorTests(ExternalApiBaseTest):
 
     @patch("outlook_web.services.graph.get_emails_graph")
     def test_proxy_error_returns_502(self, mock_graph):
-        """TC-MSG-15: Graph 代理错误 → 502 PROXY_ERROR"""
+        """TC-MSG-15: Graph 代理错误 → 502 PROXY_ERROR（分组需配置代理，上游 v2.9.5）"""
         email_addr = self._insert_outlook_account()
+        self._set_group_proxy(email_addr, "socks5://127.0.0.1:1080")
         self._set_external_api_key("abc123")
         mock_graph.return_value = {
             "success": False,
@@ -1335,6 +1345,7 @@ class ExternalApiMessageErrorTests(ExternalApiBaseTest):
         from outlook_web.errors import build_error_payload
 
         email_addr = self._insert_outlook_account()
+        self._set_group_proxy(email_addr, "socks5://127.0.0.1:1080")
         self._set_external_api_key("abc123")
         mock_graph.return_value = {
             "success": False,

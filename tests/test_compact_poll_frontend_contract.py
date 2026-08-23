@@ -55,7 +55,11 @@ class CompactPollFrontendContractTests(unittest.TestCase):
         self.assertIn('id="enableAutoPolling"', html)
         self.assertIn('id="pollingInterval"', html)
         self.assertIn('id="pollingCount"', html)
-        self.assertIn('min="3" max="300"', html)
+        # 格式化后 min/max 属性分行：弹性匹配
+        self.assertTrue(
+            'min="3" max="300"' in html.replace("\n", " ") or ('min="3"' in html and 'max="300"' in html),
+            "轮询面板应包含 min=3 / max=300 范围",
+        )
 
     # ──────────────────────────────────────────────────────
     # TC-B02：i18n.js 包含简洁模式运行时 UI 文本（按钮文本、Toast 等）

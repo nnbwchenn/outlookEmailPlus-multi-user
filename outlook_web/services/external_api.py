@@ -530,10 +530,8 @@ def list_messages_for_external(
         return emails, method_label
 
     graph_error = graph_result.get("error")
-    if isinstance(graph_error, dict) and graph_error.get("type") in (
-        "ProxyError",
-        "ConnectionError",
-    ):
+    # 仅分组配置了代理时，才将代理/连接异常升级为 PROXY_ERROR 并中断 IMAP 回退。
+    if proxy_url and isinstance(graph_error, dict) and graph_error.get("type") in ("ProxyError", "ConnectionError"):
         raise ProxyError("代理连接失败", data=graph_error)
 
     # Graph 失败 → IMAP(New) → IMAP(Old) 回退
@@ -920,6 +918,11 @@ def _extract_verification_with_memory_for_outlook(
 
     if not result.get("success"):
         error_code = str(result.get("error_code") or "UNKNOWN")
+        if error_code == "EMAIL_BOX_EMPTY":
+            raise MailNotFoundError(
+                str(result.get("error_message") or "邮箱中暂无邮件"),
+                data={"email": email_addr, "empty_mailbox": True},
+            )
         if error_code == "ACCOUNT_AUTH_EXPIRED":
             raise UpstreamReadFailedError("Graph/IMAP 均读取失败", data=result.get("upstream_errors"))
         if error_code == "VERIFICATION_NOT_FOUND":

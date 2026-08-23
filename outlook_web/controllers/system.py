@@ -6,7 +6,7 @@ import time
 from datetime import datetime, timezone
 from typing import Any
 
-from flask import jsonify, request
+from flask import Response, jsonify, request
 
 from outlook_web import __version__ as APP_VERSION
 from outlook_web import config
@@ -19,7 +19,8 @@ from outlook_web.db import (
 )
 from outlook_web.repositories import accounts as accounts_repo
 from outlook_web.repositories import settings as settings_repo
-from outlook_web.security.auth import admin_required, api_key_required, login_required
+from outlook_web.repositories import users as users_repo
+from outlook_web.security.auth import admin_required, api_key_required, get_current_user, login_required
 from outlook_web.security.external_api_guard import external_api_guards
 from outlook_web.services import external_api as external_api_service
 from outlook_web.services.scheduler import REFRESH_LOCK_NAME
@@ -32,12 +33,65 @@ _version_cache_at: float = 0.0
 _VERSION_CACHE_TTL = 600  # 10 分钟
 
 # 每次进程启动生成一次，用于前端判断是否发生重启
-_HEALTHZ_BOOT_ID = f"{int(time.time() * 1000)}-{os.getpid()}"
+_HEALTHZ_BOOT_ID = f"{time.time_ns()}-{os.getpid()}"
 
 
 def utcnow() -> datetime:
     """返回 naive UTC 时间（等价于旧的 datetime.utcnow()）"""
     return datetime.now(timezone.utc).replace(tzinfo=None)
+
+
+def _coerce_int(raw: Any, default: int) -> int:
+    try:
+        return int(raw)
+    except (TypeError, ValueError):
+        return default
+
+
+def _get_int_setting(key: str, default: int) -> int:
+    try:
+        return int(settings_repo.get_setting(key, str(default)))
+    except (TypeError, ValueError):
+        return default
+
+
+
+# ==================== Service Worker 自愈清除 ====================
+# 历史部署（v0.8.x）注册过 Service Worker，现行代码已不再使用 SW。
+# 残留的旧 SW 会持续向受控页面供过期缓存（表现为白屏/加载旧 JS）。
+# 此 kill-switch：浏览器更新检查命中 /sw.js 后，新 SW 安装即注销自身并清空全部缓存。
+_SW_UNREGISTER_SCRIPT = """// Service worker kill-switch: self-unregister + purge all caches
+self.addEventListener('install', function () {
+  self.skipWaiting();
+});
+self.addEventListener('activate', function (event) {
+  event.waitUntil(
+    (async function () {
+      try {
+        if (self.registration.navigationPreload) {
+          await self.registration.navigationPreload.disable();
+        }
+      } catch (err) { /* ignore */ }
+      try {
+        var keys = await caches.keys();
+        await Promise.all(keys.map(function (k) { return caches.delete(k); }));
+      } catch (err) { /* ignore */ }
+      try {
+        await self.registration.unregister();
+      } catch (err) { /* ignore */ }
+      try {
+        var clientList = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+        clientList.forEach(function (client) { client.navigate(client.url); });
+      } catch (err) { /* ignore */ }
+    })()
+  );
+});
+"""
+
+
+def service_worker_kill_switch() -> Response:
+    """返回自注销 SW 脚本，清除历史残留的 Service Worker 及其缓存。"""
+    return Response(_SW_UNREGISTER_SCRIPT, mimetype="application/javascript", headers={"Cache-Control": "no-store"})
 
 
 @login_required
@@ -69,20 +123,26 @@ def api_bootstrap() -> Any:
             "tempEmails": {"listPanelWidth": 300},
         }
 
-    return jsonify(
-        {
-            "success": True,
-            "bootstrap": {
-                "ui_layout_v2": ui_layout,
-                "enable_auto_polling": settings_repo.get_setting("enable_auto_polling", "false") == "true",
-                "polling_interval": int(settings_repo.get_setting("polling_interval", "10")),
-                "polling_count": int(settings_repo.get_setting("polling_count", "5")),
-                "enable_compact_auto_poll": settings_repo.get_setting("enable_compact_auto_poll", "false") == "true",
-                "compact_poll_interval": int(settings_repo.get_setting("compact_poll_interval", "10")),
-                "compact_poll_max_count": int(settings_repo.get_setting("compact_poll_max_count", "5")),
-            },
-        }
-    )
+    bootstrap: dict[str, Any] = {
+        "ui_layout_v2": ui_layout,
+        "enable_auto_polling": settings_repo.get_setting("enable_auto_polling", "false") == "true",
+        "polling_interval": _get_int_setting("polling_interval", 10),
+        "polling_count": _get_int_setting("polling_count", 5),
+        "enable_compact_auto_poll": settings_repo.get_setting("enable_compact_auto_poll", "false") == "true",
+        "compact_poll_interval": _get_int_setting("compact_poll_interval", 10),
+        "compact_poll_max_count": _get_int_setting("compact_poll_max_count", 5),
+    }
+
+    # member：已保存个人轮询偏好时，覆盖全局轮询配置（仅影响本人客户端）
+    current_user = get_current_user()
+    if current_user and current_user.get("role") != "admin":
+        member_polling = users_repo.get_notification_setting(current_user["id"], "polling")
+        if member_polling:
+            bootstrap["enable_auto_polling"] = bool(member_polling.get("enabled"))
+            bootstrap["polling_interval"] = max(3, min(300, _coerce_int(member_polling.get("interval"), 10)))
+            bootstrap["polling_count"] = max(0, min(100, _coerce_int(member_polling.get("max_count"), 5)))
+
+    return jsonify({"success": True, "bootstrap": bootstrap})
 
 
 # ==================== 系统 API ====================
@@ -90,12 +150,54 @@ def api_bootstrap() -> Any:
 
 def healthz() -> Any:
     """基础健康检查（用于容器/反代探活）"""
+
+    def _read_build_file(name: str) -> str:
+        try:
+            with open(name, "r", encoding="utf-8") as fh:
+                return (fh.read() or "").strip()
+        except Exception:
+            return ""
+
+    def _clean(value: str | None) -> str:
+        text = (value or "").strip()
+        if not text or text.lower() in {"unknown", "null", "none"}:
+            return ""
+        return text
+
+    build_info = _read_build_file("/app/.build-info") or _read_build_file(".build-info")
+    info_map: dict[str, str] = {}
+    for line in build_info.splitlines():
+        if "=" in line:
+            key, value = line.split("=", 1)
+            info_map[key.strip()] = value.strip()
+
+    git_sha = (
+        _clean(os.getenv("BUILD_SHA"))
+        or _clean(os.getenv("RAILWAY_GIT_COMMIT_SHA"))
+        or _clean(os.getenv("GITHUB_SHA"))
+        or _clean(_read_build_file("/app/.build_sha"))
+        or _clean(info_map.get("sha"))
+        or ""
+    )
+    git_branch = (
+        _clean(os.getenv("BUILD_BRANCH"))
+        or _clean(os.getenv("RAILWAY_GIT_BRANCH"))
+        or _clean(_read_build_file("/app/.build_branch"))
+        or _clean(info_map.get("branch"))
+        or ""
+    )
+    build_time = (
+        _clean(os.getenv("BUILD_TIME")) or _clean(_read_build_file("/app/.build_time")) or _clean(info_map.get("time")) or ""
+    )
     return (
         jsonify(
             {
                 "status": "ok",
                 "version": APP_VERSION,
                 "boot_id": _HEALTHZ_BOOT_ID,
+                "git_sha": git_sha[:12] if git_sha else "unknown",
+                "git_branch": git_branch or "unknown",
+                "build_time": build_time or "unknown",
             }
         ),
         200,

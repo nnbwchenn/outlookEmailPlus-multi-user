@@ -68,7 +68,9 @@ def get_user_by_id(user_id: int) -> dict[str, Any] | None:
     """按 ID 查询用户（不含密码哈希）。"""
     db = _conn()
     row = db.execute(
-        "SELECT id, username, role, display_name, status, created_at FROM users WHERE id = ? LIMIT 1",
+        "SELECT id, username, role, display_name, status, created_at, "
+        "COALESCE(external_api_enabled, 0) AS external_api_enabled, external_api_rate_limit "
+        "FROM users WHERE id = ? LIMIT 1",
         (user_id,),
     ).fetchone()
     return dict(row) if row else None
@@ -95,7 +97,9 @@ def list_users() -> list[dict[str, Any]]:
     """列出所有用户（不含密码哈希）。"""
     db = _conn()
     rows = db.execute("""
-        SELECT id, username, role, display_name, status, created_at
+        SELECT id, username, role, display_name, status, created_at,
+               COALESCE(external_api_enabled, 0) AS external_api_enabled,
+               external_api_rate_limit
         FROM users ORDER BY id ASC
         """).fetchall()
     return [dict(r) for r in rows]
@@ -128,6 +132,8 @@ def update_user(
     role: str | None = None,
     display_name: str | None = None,
     status: str | None = None,
+    external_api_enabled: bool | None = None,
+    external_api_rate_limit: int | None = None,
 ) -> bool:
     """更新用户信息。"""
     db = _conn()
@@ -136,6 +142,12 @@ def update_user(
     if password is not None:
         fields.append("password_hash = ?")
         params.append(hash_password(password))
+    if external_api_enabled is not None:
+        fields.append("external_api_enabled = ?")
+        params.append(1 if external_api_enabled else 0)
+    if external_api_rate_limit is not None:
+        fields.append("external_api_rate_limit = ?")
+        params.append(int(external_api_rate_limit))
     if role is not None:
         fields.append("role = ?")
         params.append(role)

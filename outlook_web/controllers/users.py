@@ -53,7 +53,9 @@ def api_list_users() -> Any:
                 "display_name": u["display_name"],
                 "status": u["status"],
                 "created_at": u["created_at"],
-                "account_count": users_repo.count_owned_accounts(int(u["id"])),
+                "external_api_enabled": bool(u.get("external_api_enabled")),
+                "external_api_rate_limit": u.get("external_api_rate_limit"),
+                "account_count": users_repo.count_owned_accounts(u["id"]),
             }
         )
     return jsonify({"success": True, "users": result})
@@ -96,7 +98,7 @@ def api_update_user(user_id: int) -> Any:
     if not target:
         return _json_error("USER_NOT_FOUND", "用户不存在", status=404)
 
-    current = get_current_user()
+    current = get_current_user() or {}
     if int(user_id) == int(current.get("id") or 0):
         return _json_error("CANNOT_MODIFY_SELF", "不能修改自己的账号（请用系统设置修改密码）")
 
@@ -127,6 +129,35 @@ def api_update_user(user_id: int) -> Any:
         users_repo.update_user(user_id, display_name=str(data["display_name"] or "").strip())
         updated_fields.append("display_name")
 
+    # 对外 API 权限（开关 + 每分钟限流，均由管理员设置）
+    if "external_api_enabled" in data:
+        enabled = bool(data.get("external_api_enabled"))
+        users_repo.update_user(user_id, external_api_enabled=enabled)
+        updated_fields.append("external_api_enabled=" + ("on" if enabled else "off"))
+
+    if "external_api_rate_limit" in data:
+        raw_limit = data.get("external_api_rate_limit")
+        if raw_limit in (None, ""):
+            # 置空恢复默认（NULL = 60/分钟）
+            from outlook_web.db import get_db
+
+            db = get_db()
+            db.execute(
+                "UPDATE users SET external_api_rate_limit = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+                (user_id,),
+            )
+            db.commit()
+            updated_fields.append("external_api_rate_limit=default")
+        else:
+            try:
+                limit = int(raw_limit)
+            except (TypeError, ValueError):
+                return _json_error("RATE_LIMIT_INVALID", "限流阈值必须是数字")
+            if limit < 1 or limit > 10000:
+                return _json_error("RATE_LIMIT_INVALID", "限流阈值必须在 1-10000 之间")
+            users_repo.update_user(user_id, external_api_rate_limit=limit)
+            updated_fields.append(f"external_api_rate_limit={limit}")
+
     log_audit("update", "user", str(user_id), f"更新用户字段：{','.join(updated_fields)}")
     return jsonify({"success": True, "message": "用户已更新", "updated": updated_fields})
 
@@ -139,7 +170,7 @@ def api_delete_user(user_id: int) -> Any:
     if not target:
         return _json_error("USER_NOT_FOUND", "用户不存在", status=404)
 
-    current = get_current_user()
+    current = get_current_user() or {}
     if int(user_id) == int(current.get("id") or 0):
         return _json_error("CANNOT_DELETE_SELF", "不能删除当前登录的管理员账号")
 

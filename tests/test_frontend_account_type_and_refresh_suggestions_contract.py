@@ -41,21 +41,29 @@ class FrontendAccountTypeContractTests(unittest.TestCase):
         client = self.app.test_client()
         groups_js = self._get_text(client, "/static/js/features/groups.js")
 
-        self.assertIn("const supportsTokenRefresh = isRefreshableOutlookAccount(acc);", groups_js)
+        norm_gjs = " ".join(groups_js.split()).replace('"', "'")
+        self.assertIn("const supportsTokenRefresh = isRefreshableOutlookAccount(acc);", norm_gjs)
         self.assertIn(
             "const isFailed = supportsTokenRefresh && acc.last_refresh_status === 'failed';",
-            groups_js,
+            norm_gjs,
         )
         self.assertIn(
             "const defaultMethodLabel = supportsTokenRefresh ? 'Graph' : 'IMAP';",
-            groups_js,
+            norm_gjs,
         )
-        self.assertIn('let tokenBadge = `<span class="badge badge-gray">IMAP</span>`;', groups_js)
+        # Token 状态已改为邮箱名左侧圆点（无文字徽章）：断言新实现
+        self.assertIn("let statusDot = '';", groups_js)
+        self.assertIn("let statusDot = '';", groups_js)
+        self.assertIn("token-status-dot", groups_js)
         self.assertIn("if (supportsTokenRefresh) {", groups_js)
+        # 渠道标签已移至标签区（Provider/Outlook 旁边）：断言新位置与顺序
         self.assertIn(
-            '<span class="account-api-tag">${acc.method || defaultMethodLabel}</span>',
+            '<span class="account-api-tag" title="${escapeHtml(translateAppTextLocal(\'收信通道\'))}">${acc.method || defaultMethodLabel}</span>',
             groups_js,
         )
+        tag_row_pos = groups_js.index('${acc.method || defaultMethodLabel}</span>')
+        provider_pos = groups_js.index('${providerTagHtml}', tag_row_pos)
+        self.assertLess(tag_row_pos, provider_pos)  # Graph 标签在 Outlook 标签之前
 
     def test_group_refresh_error_button_passes_account_type_and_provider(self):
         client = self.app.test_client()
@@ -71,48 +79,55 @@ class FrontendAccountTypeContractTests(unittest.TestCase):
         main_js = self._get_text(client, "/static/js/main.js")
         index_html = self._get_text(client, "/")
 
+        norm_main_modal = " ".join(main_js.split()).replace('"', "'")
         self.assertIn(
             "const suggestionsEl = document.getElementById('refreshErrorSuggestions');",
-            main_js,
+            norm_main_modal,
         )
+        # 格式化后对象参数拆行、map 链拆行：去空白匹配
+        stripped_modal = norm_main_modal.replace(" ", "")
         self.assertIn(
-            "const suggestions = buildRefreshErrorSuggestions({ accountType, provider, errorMessage });",
-            main_js,
+            "const suggestions=buildRefreshErrorSuggestions({accountType,provider,errorMessage,});".replace(" ", ""),
+            stripped_modal,
         )
-        self.assertIn(
-            "suggestionsEl.innerHTML = suggestions.map(item => `<li>${escapeHtml(item)}</li>`).join('');",
-            main_js,
-        )
+        self.assertRegex(stripped_modal, r"suggestionsEl\.innerHTML=suggestions")
         self.assertIn('id="refreshErrorSuggestions"', index_html)
 
     def test_refresh_all_sse_error_branch_handles_refresh_conflict(self):
         client = self.app.test_client()
         main_js = self._get_text(client, "/static/js/main.js")
 
-        self.assertIn("} else if (data.type === 'error') {", main_js)
-        self.assertIn("const errCode = data.error && data.error.code;", main_js)
-        self.assertIn("if (errCode === 'REFRESH_CONFLICT') {", main_js)
-        self.assertIn("showToast(userMessage, 'warning', data.error || null, true);", main_js)
+        norm_main_sse = " ".join(main_js.split()).replace('"', "'")
+        stripped_sse = norm_main_sse.replace(" ", "").replace(",)", ")")
+        self.assertIn("} else if (data.type === 'error') {", norm_main_sse)
+        self.assertIn("const errCode = data.error && data.error.code;", norm_main_sse)
+        self.assertIn("if (errCode === 'REFRESH_CONFLICT') {", norm_main_sse)
+        self.assertIn("showToast(userMessage,'warning',data.error||null,true);", stripped_sse)
 
     def test_retry_failed_conflict_branch_uses_warning_with_actionable_message(self):
         client = self.app.test_client()
         main_js = self._get_text(client, "/static/js/main.js")
 
-        self.assertIn("if (errCode === 'REFRESH_CONFLICT') {", main_js)
-        self.assertIn("Wait for it to finish and retry.", main_js)
-        self.assertIn("showToast(msg, 'warning', data.error || null, true);", main_js)
+        norm_main = " ".join(main_js.split()).replace('"', "'")
+        self.assertIn("if (errCode === 'REFRESH_CONFLICT') {", norm_main)
+        self.assertIn("Wait for it to finish and retry.", norm_main)
+        self.assertIn("showToast(msg, 'warning', data.error || null, true);", norm_main)
 
     def test_refresh_all_no_mail_permission_uses_actionable_summary(self):
         client = self.app.test_client()
         main_js = self._get_text(client, "/static/js/main.js")
 
-        self.assertIn("function buildRefreshAllPermissionErrorSummary(errorPayload)", main_js)
-        self.assertIn("if (errCode === 'NO_MAIL_PERMISSION') {", main_js)
-        self.assertIn("[Code] NO_MAIL_PERMISSION", main_js)
-        self.assertIn("Mail.Read 或 Mail.ReadWrite", main_js)
+        norm_main_perm = " ".join(main_js.split()).replace('"', "'")
+        stripped_norm = norm_main_perm.replace(" ", "")
+        self.assertIn("function buildRefreshAllPermissionErrorSummary(errorPayload)", norm_main_perm)
+        self.assertIn("if (errCode === 'NO_MAIL_PERMISSION') {", norm_main_perm)
+        self.assertIn("[Code] NO_MAIL_PERMISSION", norm_main_perm)
+        self.assertIn("Mail.Read 或 Mail.ReadWrite", norm_main_perm)
+        # 格式化后 showToast 参数拆行：去掉所有空白后匹配
+        # 格式化后 showToast 参数拆行（尾随逗号）：去空白+去尾随逗号匹配
         self.assertIn(
-            "showToast(buildRefreshAllPermissionErrorSummary(data.error || {}), 'error', data.error || null, true);",
-            main_js,
+            "showToast(buildRefreshAllPermissionErrorSummary(data.error||{}),'error',data.error||null,true);".replace(" ", ""),
+            stripped_norm.replace(",)", ")").replace("( ", "("),
         )
 
     def test_remark_entry_copy_is_updated_in_i18n_template_and_compact_menu(self):

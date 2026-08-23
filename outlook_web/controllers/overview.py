@@ -3,7 +3,7 @@ from __future__ import annotations
 import time
 from typing import Any
 
-from flask import jsonify
+from flask import jsonify, request
 
 from outlook_web.repositories import overview as overview_repo
 from outlook_web.security.auth import get_current_user, login_required
@@ -87,3 +87,22 @@ def api_get_overview_pool() -> Any:
 @login_required
 def api_get_overview_activity() -> Any:
     return jsonify(overview_repo.get_activity_stats())
+
+
+@login_required
+def api_get_overview_performance() -> Any:
+    """性能指标快照（进程内采集，窗口 300-86400 秒）。"""
+    window_seconds = request.args.get("window_seconds", default=3600, type=int)
+    from outlook_web.services.performance_metrics import get_performance_snapshot
+
+    return jsonify(get_performance_snapshot(window_seconds))
+
+
+@login_required
+def api_report_client_performance() -> Any:
+    """前端性能指标上报（有界队列，最多接受 100 条/批）。"""
+    payload = request.get_json(silent=True) or {}
+    from outlook_web.services.performance_metrics import record_client_metrics
+
+    accepted = record_client_metrics(payload.get("metrics"))
+    return jsonify({"success": True, "accepted": accepted}), 202

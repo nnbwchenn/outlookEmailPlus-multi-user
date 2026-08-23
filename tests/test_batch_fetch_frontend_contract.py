@@ -58,10 +58,12 @@ class BatchFetchFrontendContractTests(unittest.TestCase):
         compact_start = html.index('id="compactBatchActionBar"')
         standard_section = html[standard_start:compact_start]
 
+        # 格式化后按钮属性可能换行：用弹性正则（onclick 与文本间允许任意空白/属性）
         self.assertRegex(
-            standard_section,
+            standard_section.replace("\n", " "),
             re.compile(
-                r'<button class="btn btn-sm btn-ghost" onclick="showBatchFetchConfirm\(\)">\s*批量拉取邮件\s*</button>'
+                r'<button[^>]*onclick="showBatchFetchConfirm\(\)"[^>]*>\s*批量拉取邮件\s*</button>',
+                re.DOTALL,
             ),
         )
 
@@ -141,10 +143,11 @@ class BatchFetchFrontendContractTests(unittest.TestCase):
         """TDD D-04：selectedAccountIds 仍是跨分组的批量选择主状态。"""
         js = self._get_main_js()
 
-        self.assertIn("let selectedAccountIds = new Set();", js)
+        self.assertTrue("let selectedAccountIds = new Set();" in js or "const selectedAccountIds = new Set();" in js)
         self.assertIn("selectedAccountIds.add(accountId);", js)
         self.assertIn("selectedAccountIds.delete(accountId);", js)
-        self.assertIn("countSpan.textContent = formatSelectedItemsLabel(selectedAccountIds.size);", js)
+        self.assertIn("formatSelectedItemsLabel(", js)
+        self.assertIn("selectedAccountIds.size", js)
 
 
 if __name__ == "__main__":

@@ -113,16 +113,19 @@ class BatchFetchEmailApiContractTests(unittest.TestCase):
             },
         },
     )
+    @patch("outlook_web.controllers.emails.groups_repo.get_group_by_id", return_value={"id": 7, "proxy_url": "socks5://127.0.0.1:1080"})
     @patch("outlook_web.controllers.emails.accounts_repo.get_account_by_email")
     def test_email_api_failure_payload_remains_compatible_with_batch_failure_aggregation(
         self,
         mock_get_account_by_email,
+        _mock_groups,
         _mock_graph_get_emails,
         mock_imap_get_emails,
     ):
-        """TDD C-03：失败响应应继续遵循统一错误结构。"""
+        # 注意：_build_outlook_account 返回 group_id=None；此处覆盖为 7 并由 _mock_groups 提供代理分组
+        """TDD C-03：失败响应应继续遵循统一错误结构。（分组配置了代理 → 代理错误才跳过 IMAP）"""
         email_addr = "batch-failure@example.com"
-        mock_get_account_by_email.return_value = self._build_outlook_account(email_addr)
+        mock_get_account_by_email.return_value = {**self._build_outlook_account(email_addr), "group_id": 7}
 
         client = self.app.test_client()
         self._login(client)

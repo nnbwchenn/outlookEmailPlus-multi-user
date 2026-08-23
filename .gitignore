@@ -107,3 +107,9 @@ start_temp.bat
 .aider*
 
 cookies.txt
+
+# 临时调试脚本
+dbg.cjs
+e2e.cjs
+ui3.cjs
+vc.cjs

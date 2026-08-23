@@ -621,11 +621,9 @@ def api_get_emails(email_addr: str) -> Any:
         graph_error = graph_result.get("error")
         all_errors["graph"] = graph_error
 
-        # 如果是代理错误，不再回退 IMAP
-        if isinstance(graph_error, dict) and graph_error.get("type") in (
-            "ProxyError",
-            "ConnectionError",
-        ):
+        # 仅分组明确配置代理时，代理/连接异常才应跳过 IMAP 回退。
+        # 无代理场景下的 ConnectionError 多半是直连上游失败，应继续尝试 IMAP。
+        if proxy_url and isinstance(graph_error, dict) and graph_error.get("type") in ("ProxyError", "ConnectionError"):
             return build_error_response(
                 "EMAIL_PROXY_CONNECTION_FAILED",
                 "代理连接失败，请检查分组代理设置",
@@ -816,6 +814,54 @@ def api_delete_emails() -> Any:
 
 
 @login_required
+def api_mark_email_read(email_addr: str, message_id: str) -> Any:
+    """打开邮件时标记为已读。Graph 尽力而为；失败不影响前端本地状态更新。"""
+    if not _ensure_email_owned(email_addr):
+        return build_error_response(
+            "ACCOUNT_NOT_FOUND",
+            "账号不存在",
+            message_en="Account not found",
+            status=404,
+        )
+    email_addr = normalize_alias_email(email_addr) or ""
+    account = accounts_repo.get_account_by_email(email_addr)
+    if not account:
+        return build_error_response(
+            "ACCOUNT_NOT_FOUND",
+            "账号不存在",
+            message_en="Account not found",
+            status=404,
+        )
+
+    # 成员权限：仅能操作自己名下的账号
+    current = get_current_user() or {}
+    if current.get("role") != "admin" and account.get("owner_user_id") != current.get("id"):
+        return build_error_response(
+            "ACCOUNT_NOT_FOUND",
+            "账号不存在",
+            message_en="Account not found",
+            status=404,
+        )
+
+    proxy_url = ""
+    if account.get("group_id"):
+        from outlook_web.repositories import groups as groups_repo
+
+        group = groups_repo.get_group_by_id(account["group_id"])
+        if group:
+            proxy_url = group.get("proxy_url", "") or ""
+
+    from outlook_web.services.graph import mark_email_read_graph
+
+    marked = mark_email_read_graph(
+        client_id=account.get("client_id") or "",
+        refresh_token=account.get("refresh_token") or "",
+        message_id=message_id,
+        proxy_url=proxy_url or None,
+    )
+    return jsonify({"success": True, "marked": bool(marked)})
+
+
 def api_get_email_detail(email_addr: str, message_id: str) -> Any:
     if not _ensure_email_owned(email_addr):
         return build_error_response(
@@ -887,9 +933,10 @@ def api_get_email_detail(email_addr: str, message_id: str) -> Any:
         _LOGGER.warning("email_detail_imap_failed email=%s message_id=%s", email_addr, message_id)
         return _build_response_from_error_payload(error_payload)
 
-    method = request.args.get("method", "graph")
+    # 前端可能回传 "Graph API"/"IMAP (New)" 等展示名，统一小写前缀判断
+    method = (request.args.get("method", "graph") or "graph").strip().lower()
 
-    if method == "graph":
+    if method.startswith("graph"):
         # 获取分组代理设置
         proxy_url = ""
         if account.get("group_id"):
@@ -1076,6 +1123,10 @@ def _api_extract_verification_impl(email_addr: str) -> Any:
         elif field == "link":
             data["verification_code"] = None
             data["formatted"] = data.get("verification_link") or None
+        elif data.get("verification_code"):
+            # 有验证码时 formatted 不再拼接链接（上游行为：避免"343458 https://awstrack..."式输出）；
+            # 链接仍通过 verification_link / links 字段提供
+            data["formatted"] = data.get("verification_code")
 
         account_summary = _update_account_summary_from_verification(account, data)
         _LOGGER.debug(

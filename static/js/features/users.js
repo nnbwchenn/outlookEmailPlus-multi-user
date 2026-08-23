@@ -28,7 +28,7 @@ async function loadUsersPage() {
         const users = data.users || [];
         container.innerHTML = `
             <div style="overflow-x:auto;">
-                <table class="data-table data-table--pool-admin" style="width:100%;">
+                <table class="data-table data-table--admin" style="width:100%;">
                     <thead>
                         <tr>
                             <th>用户名</th>
@@ -51,7 +51,7 @@ async function loadUsersPage() {
                                 <td style="font-size:0.75rem;color:var(--text-muted);">${u.created_at ? String(u.created_at).slice(0, 16).replace('T', ' ') : '-'}</td>
                                 <td style="white-space:nowrap;">
                                     <button class="btn btn-sm btn-ghost" onclick="showAssignAccountsModal(${u.id}, '${muEscape(u.username)}')">分配邮箱</button>
-                                    <button class="btn btn-sm btn-ghost" onclick="showEditUserModal(${u.id}, '${muEscape(u.username)}', '${u.role}')">编辑</button>
+                                    <button class="btn btn-sm btn-ghost" onclick="showEditUserModal(${u.id}, '${muEscape(u.username)}', '${u.role}', ${u.external_api_enabled ? 1 : 0}, ${u.external_api_rate_limit || ''})">编辑</button>
                                     ${u.username !== 'admin' ? `<button class="btn btn-sm btn-danger" onclick="deleteUser(${u.id}, '${muEscape(u.username)}')">删除</button>` : ''}
                                 </td>
                             </tr>
@@ -148,7 +148,7 @@ async function createUser() {
 }
 
 // 编辑用户（重置密码 / 角色 / 状态）
-function showEditUserModal(userId, username, role) {
+function showEditUserModal(userId, username, role, extApiEnabled, extApiRateLimit) {
     const existing = document.getElementById('muEditUserModal');
     if (existing) existing.remove();
 
@@ -180,6 +180,17 @@ function showEditUserModal(userId, username, role) {
                         <option value="disabled">禁用</option>
                     </select>
                 </div>
+                <div style="border-top:1px solid var(--border-light);padding-top:12px;">
+                    <div style="font-weight:600;margin-bottom:8px;font-size:0.9rem;">对外 API 权限</div>
+                    <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-bottom:8px;">
+                        <input type="checkbox" id="muEditExtApiEnabled" ${extApiEnabled ? 'checked' : ''}>
+                        <span>允许使用成员 API Key 查询名下邮箱/验证码</span>
+                    </label>
+                    <div class="form-group" style="margin-bottom:0;">
+                        <label class="form-label">每分钟限流 <span style="font-size:0.75rem;color:var(--text-muted);font-weight:400;">（留空 = 默认 60）</span></label>
+                        <input type="number" class="form-input" id="muEditExtApiRateLimit" min="1" max="10000" placeholder="60" value="${extApiRateLimit || ''}" style="max-width:140px;">
+                    </div>
+                </div>
                 <div id="muEditStatusMsg" class="token-status hidden"></div>
             </div>
             <div class="modal-footer" style="display:flex;justify-content:flex-end;gap:8px;padding:0.75rem 1.25rem;border-top:1px solid var(--border-light);">
@@ -207,6 +218,15 @@ async function updateUser(userId) {
     try {
         const payload = { role, status };
         if (password) payload.password = password;
+        payload.external_api_enabled = document.getElementById('muEditExtApiEnabled').checked;
+        const rateRaw = document.getElementById('muEditExtApiRateLimit').value.trim();
+        payload.external_api_rate_limit = rateRaw === '' ? null : parseInt(rateRaw, 10);
+        if (rateRaw !== '' && (isNaN(payload.external_api_rate_limit) || payload.external_api_rate_limit < 1 || payload.external_api_rate_limit > 10000)) {
+            statusEl.className = 'token-status token-dialog-status error';
+            statusEl.textContent = '限流阈值必须是 1-10000 之间的数字';
+            statusEl.style.display = 'block';
+            return;
+        }
         const response = await fetch(`/api/users/${userId}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },

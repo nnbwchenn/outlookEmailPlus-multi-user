@@ -160,7 +160,10 @@ class TestUIRedesignBugFixes(unittest.TestCase):
         client = self._get_client()
         _, main_js = self._get_text(client, "/static/js/main.js")
         _, overview_js = self._get_text(client, "/static/js/features/overview.js")
-        self.assertIn("if (page === 'dashboard' && typeof initOverview === 'function') initOverview();", main_js)
+        self.assertIn(
+            "if (page === 'dashboard' && typeof initOverview === 'function') initOverview();",
+            " ".join(main_js.split()).replace('"', "'"),
+        )
         self.assertNotIn("function loadDashboard", main_js)
         self.assertIn("function initOverview()", overview_js)
         self.assertIn("summary: '/api/overview/summary'", overview_js)
@@ -221,7 +224,6 @@ class TestUIRedesignBugFixes(unittest.TestCase):
             "/static/js/features/accounts.js",
             "/static/js/features/emails.js",
             "/static/js/features/overview.js",
-            "/static/js/features/pool_admin.js",
         ]
         for js_path in js_files:
             status_code, js = self._get_text(client, js_path)

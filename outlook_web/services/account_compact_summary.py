@@ -92,8 +92,9 @@ def _resolve_compact_verification_policy(account_id: int):
     account = accounts_repo.get_account_by_id(account_id)
     group = None
     if account and account.get("group_id"):
+        raw_group_id = account.get("group_id")
         try:
-            group_id = int(account.get("group_id"))
+            group_id = int(raw_group_id) if raw_group_id is not None else 0
         except (TypeError, ValueError):
             group_id = 0
         if group_id > 0:

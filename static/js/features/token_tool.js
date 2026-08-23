@@ -128,6 +128,10 @@ function switchAuthMethod(method) {
     const paneManual = document.getElementById('authPane-manual');
     if (paneOne) paneOne.hidden = normalized !== 'oneclick';
     if (paneManual) paneManual.hidden = normalized !== 'manual';
+    // 方式二全程使用默认配置（Thunderbird ID + 固定回调 + 默认 Scope），
+    // 无需个人填写任何 OAuth 信息 → 隐藏整个配置卡片；方式一（自建 Azure 应用）才需要
+    const oauthCard = document.getElementById('oauthConfigCard');
+    if (oauthCard) oauthCard.hidden = normalized === 'manual';
     updateOneClickButtonState();
 }
 
@@ -438,14 +442,6 @@ function renderTokenResult(result) {
 
     fillResultField('refreshTokenResult', result.refresh_token || '');
     fillResultField('accessTokenResult', result.access_token || '');
-    fillResultField('clientIdResult', result.client_id || '');
-    fillResultField('redirectUriResult', result.redirect_uri || '');
-    fillResultField('requestedScopeResult', result.requested_scope || '');
-    fillResultField('grantedScopeResult', result.granted_scope || '');
-    fillResultField('audienceResult', result.audience || '');
-    fillResultField('scopeClaimResult', result.scope_claim || '');
-    fillResultField('rolesClaimResult', result.roles_claim || '');
-    fillResultField('expiresInResult', String(result.expires_in || ''));
 
     document.getElementById('result-panel').scrollIntoView({ block: 'nearest', behavior: 'smooth' });
     setStepActive(3);
@@ -492,14 +488,6 @@ function copyAllResults() {
     const lines = [
         `refresh_token=${result.refresh_token || ''}`,
         `access_token=${result.access_token || ''}`,
-        `client_id=${result.client_id || ''}`,
-        `redirect_uri=${result.redirect_uri || ''}`,
-        `requested_scope=${result.requested_scope || ''}`,
-        `granted_scope=${result.granted_scope || ''}`,
-        `audience=${result.audience || ''}`,
-        `scope_claim=${result.scope_claim || ''}`,
-        `roles_claim=${result.roles_claim || ''}`,
-        `expires_in=${result.expires_in || ''}`,
     ];
     copyText(lines.join('\n'));
 }

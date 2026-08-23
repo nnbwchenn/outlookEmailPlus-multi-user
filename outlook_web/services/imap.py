@@ -340,7 +340,7 @@ def get_emails_imap_with_server(
 
     connection = None
     try:
-        connection = imaplib.IMAP4_SSL(server, IMAP_PORT)
+        connection = imaplib.IMAP4_SSL(server, IMAP_PORT, timeout=8)
         auth_string = f"user={account}\1auth=Bearer {access_token}\1\1".encode()
         connection.authenticate("XOAUTH2", lambda x: auth_string)
 
@@ -512,7 +512,7 @@ def fetch_and_detail_imap_with_server(
     connection = None
 
     try:
-        connection = imaplib.IMAP4_SSL(server, IMAP_PORT)
+        connection = imaplib.IMAP4_SSL(server, IMAP_PORT, timeout=8)
         auth_string = f"user={account}\x01auth=Bearer {access_token}\x01\x01".encode()
         connection.authenticate("XOAUTH2", lambda x: auth_string)
 
@@ -681,7 +681,7 @@ def get_email_detail_imap_with_server(
 
     connection = None
     try:
-        connection = imaplib.IMAP4_SSL(server, IMAP_PORT)
+        connection = imaplib.IMAP4_SSL(server, IMAP_PORT, timeout=8)
         auth_string = f"user={account}\1auth=Bearer {access_token}\1\1".encode()
         connection.authenticate("XOAUTH2", lambda x: auth_string)
 
@@ -769,7 +769,7 @@ def delete_emails_imap(
     try:
         auth_string = f"user={email_addr}\x01auth=Bearer {access_token}\x01\x01"
 
-        imap = imaplib.IMAP4_SSL(server, IMAP_PORT)
+        imap = imaplib.IMAP4_SSL(server, IMAP_PORT, timeout=8)
         imap.authenticate("XOAUTH2", lambda x: auth_string.encode("utf-8"))
 
         imap.select("INBOX")

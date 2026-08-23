@@ -486,7 +486,10 @@ class JSContractTests(unittest.TestCase):
         js = self._get_js()
         # 精确定位 checkVersionUpdate 函数体
         idx = js.index("async function checkVersionUpdate()")
-        block_end = js.index("\n        function dismissVersionBanner()", idx)
+        import re as _re
+
+        m = _re.search(r"\n\s*function dismissVersionBanner\(\)", js[idx:])
+        block_end = idx + (m.start() if m else len(js) - idx)
         block = js[idx:block_end]
         self.assertIn("data.current_version", block)
         self.assertIn("data.latest_version", block)
@@ -525,9 +528,9 @@ class JSContractTests(unittest.TestCase):
     def test_banner_padding_clear_on_dismiss(self):
         """忽略 Banner 时清除 #app padding-top"""
         js = self._get_js()
-        idx = js.index("function dismissVersionBanner()")
-        block = js[idx:]
-        self.assertIn("paddingTop = ''", block)
+        m = re.search(r"\s*function dismissVersionBanner\(\)", js)
+        block = js[m.start():] if m else ""
+        self.assertTrue("paddingTop = ''" in block or 'paddingTop = ""' in block)
 
 
 if __name__ == "__main__":

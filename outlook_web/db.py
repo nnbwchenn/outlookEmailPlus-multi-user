@@ -299,6 +299,33 @@ def init_db(database_path: str | None = None):
             )
             """)
 
+        # 激活码（管理员批量生成；每码可绑定 max_bindings 个邮箱）
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS activation_codes (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                code TEXT NOT NULL UNIQUE,
+                max_bindings INTEGER NOT NULL DEFAULT 1,
+                status TEXT NOT NULL DEFAULT 'active',
+                redeemed_by INTEGER,
+                redeemed_at TEXT,
+                created_by INTEGER,
+                note TEXT DEFAULT '',
+                created_at TEXT NOT NULL DEFAULT (datetime('now'))
+            )
+            """)
+
+        # 激活码-邮箱绑定记录（UNIQUE 防止同一邮箱重复绑定同一激活码）
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS activation_code_bindings (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                code_id INTEGER NOT NULL REFERENCES activation_codes(id) ON DELETE CASCADE,
+                account_id INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+                user_id INTEGER,
+                created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                UNIQUE(code_id, account_id)
+            )
+            """)
+
         # 登录速率限制（持久化，支持重启/多进程）
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS login_attempts (
@@ -431,6 +458,13 @@ def init_db(database_path: str | None = None):
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
             """)
+        # 成员对外 API 权限：是否开通 + 每分钟限流（NULL = 默认 60），均由管理员设置
+        cursor.execute("PRAGMA table_info(users)")
+        users_columns = [col[1] for col in cursor.fetchall()]
+        if "external_api_enabled" not in users_columns:
+            cursor.execute("ALTER TABLE users ADD COLUMN external_api_enabled INTEGER NOT NULL DEFAULT 0")
+        if "external_api_rate_limit" not in users_columns:
+            cursor.execute("ALTER TABLE users ADD COLUMN external_api_rate_limit INTEGER")
         cursor.execute("""
             CREATE INDEX IF NOT EXISTS idx_users_username
             ON users(username)
@@ -783,14 +817,53 @@ def init_db(database_path: str | None = None):
         external_api_keys_columns = [col[1] for col in cursor.fetchall()]
         if "pool_access" not in external_api_keys_columns:
             cursor.execute("ALTER TABLE external_api_keys ADD COLUMN pool_access INTEGER NOT NULL DEFAULT 0")
+        # 成员级对外 API Key 归属（NULL = 管理员全局 Key）
+        if "owner_user_id" not in external_api_keys_columns:
+            cursor.execute("ALTER TABLE external_api_keys ADD COLUMN owner_user_id INTEGER")
+        # v25 上游同步：API Key 生命周期 expires_at + 名称唯一约束
+        if "expires_at" not in external_api_keys_columns:
+            cursor.execute("ALTER TABLE external_api_keys ADD COLUMN expires_at TIMESTAMP")
+        expected_enabled_index_columns = ["enabled", "expires_at", "updated_at"]
+        enabled_index_columns = [
+            row[2] for row in cursor.execute("PRAGMA index_info('idx_external_api_keys_enabled')").fetchall()
+        ]
+        if enabled_index_columns and enabled_index_columns != expected_enabled_index_columns:
+            cursor.execute("DROP INDEX idx_external_api_keys_enabled")
         cursor.execute("""
             CREATE INDEX IF NOT EXISTS idx_external_api_keys_enabled
-            ON external_api_keys(enabled, updated_at)
+            ON external_api_keys(enabled, expires_at, updated_at)
             """)
-        cursor.execute("""
-            CREATE INDEX IF NOT EXISTS idx_external_api_keys_name
-            ON external_api_keys(name)
-            """)
+        # API Key 名称必须由数据库保证原子唯一，避免并发请求绕过应用层预检查。
+        # 旧库若已有大小写不敏感的重复名称，遵循既有迁移纪律：中止并给出修复 SQL。
+        unique_name_index_row = cursor.execute(
+            "SELECT sql FROM sqlite_master WHERE type = 'index' AND name = 'idx_external_api_keys_name_unique'"
+        ).fetchone()
+        unique_name_index_sql = str(unique_name_index_row["sql"] or "") if unique_name_index_row else ""
+        normalized_unique_name_index_sql = "".join(unique_name_index_sql.lower().split())
+        if unique_name_index_row and "onexternal_api_keys(lower(trim(name)))" not in normalized_unique_name_index_sql:
+            cursor.execute("DROP INDEX idx_external_api_keys_name_unique")
+            unique_name_index_row = None
+
+        if not unique_name_index_row:
+            duplicate_name_sample = cursor.execute("""
+                SELECT LOWER(TRIM(name)) AS normalized_name, COUNT(*) AS c
+                FROM external_api_keys
+                GROUP BY LOWER(TRIM(name))
+                HAVING COUNT(*) > 1
+                LIMIT 5
+                """).fetchall()
+            if duplicate_name_sample:
+                raise Exception(
+                    "数据库升级被中止：检测到 external_api_keys.name 存在大小写不敏感的重复值，"
+                    "无法创建唯一索引。请先备份数据库并重命名重复 API Key 后重试"
+                    f"（重复样例：{[r['normalized_name'] for r in duplicate_name_sample]}）"
+                )
+            cursor.execute("""
+                CREATE UNIQUE INDEX idx_external_api_keys_name_unique
+                ON external_api_keys(LOWER(TRIM(name)))
+                """)
+
+        cursor.execute("DROP INDEX IF EXISTS idx_external_api_keys_name")
 
         # v10: 调用方日级使用统计（PRD-00008 P2）
         cursor.execute("""
@@ -1065,12 +1138,13 @@ def init_db(database_path: str | None = None):
     except Exception as e:
         error_text = sanitize_error_details(str(e))
         try:
-            if upgrading and migration_id is not None:
-                try:
-                    cursor.execute("ROLLBACK TO SAVEPOINT migration_work")
-                    cursor.execute("RELEASE SAVEPOINT migration_work")
-                except Exception:
-                    pass
+            if upgrading:
+                if migration_id is not None:
+                    try:
+                        cursor.execute("ROLLBACK TO SAVEPOINT migration_work")
+                        cursor.execute("RELEASE SAVEPOINT migration_work")
+                    except Exception:
+                        pass
 
                 cursor.execute(
                     """

@@ -68,12 +68,19 @@ class V191CompactModeFrontendContractTests(unittest.TestCase):
         client = self.app.test_client()
         main_js = self._get_text(client, "/static/js/main.js")
 
-        self.assertIn("let mailboxViewMode = localStorage.getItem('ol_mailbox_view_mode') || 'standard';", main_js)
-        self.assertIn("let batchTagContext = { scopedAccountIds: null };", main_js)
-        self.assertIn("let batchMoveGroupContext = { scopedAccountIds: null };", main_js)
-        self.assertIn("async function showBatchTagModal(type, options = {})", main_js)
-        self.assertIn("async function showBatchMoveGroupModal(options = {})", main_js)
-        self.assertIn("scopedAccountIds", main_js)
+        # 格式化后引号/换行有差异：压缩空白后弹性匹配（语义不变）
+        compacted = " ".join(main_js.split())
+        normalized_quotes = compacted.replace('"', "'")
+        self.assertIn(
+            "let mailboxViewMode =", normalized_quotes,
+        )
+        self.assertIn("ol_mailbox_view_mode", normalized_quotes)
+        self.assertIn("'standard'", normalized_quotes)
+        self.assertIn("let batchTagContext = { scopedAccountIds: null };", compacted)
+        self.assertIn("let batchMoveGroupContext = { scopedAccountIds: null };", compacted)
+        self.assertIn("async function showBatchTagModal(type, options = {})", compacted)
+        self.assertIn("async function showBatchMoveGroupModal(options = {})", compacted)
+        self.assertIn("scopedAccountIds", compacted)
 
     def test_compact_mode_module_exists_and_exposes_key_functions(self):
         client = self.app.test_client()
@@ -91,18 +98,22 @@ class V191CompactModeFrontendContractTests(unittest.TestCase):
         client = self.app.test_client()
         module_js = self._get_text(client, "/static/js/features/mailbox_compact.js")
 
-        self.assertIn("standardLayout.style.display = mailboxViewMode === 'standard' ? '' : 'none';", module_js)
-        self.assertIn("compactLayout.style.display = mailboxViewMode === 'compact' ? 'block' : 'none';", module_js)
+        compacted2 = " ".join(module_js.split()).replace('"', "'")
+        self.assertIn("standardLayout.style.display = mailboxViewMode === 'standard' ? '' : 'none';", compacted2)
+        self.assertIn("compactLayout.style.display = mailboxViewMode === 'compact' ? 'block' : 'none';", compacted2)
 
     def test_compact_mode_reuses_global_selection_and_does_not_depend_on_detail_panel(self):
         client = self.app.test_client()
         main_js = self._get_text(client, "/static/js/main.js")
         compact_js = self._get_text(client, "/static/js/features/mailbox_compact.js")
 
-        self.assertIn("let selectedAccountIds = new Set();", main_js)
-        self.assertNotIn("let compactSelectedAccountIds", compact_js)
+        # 格式化后 let→const：弹性匹配声明形式；负向断言语义不变
+        import re as _re
+
+        self.assertTrue(_re.search(r"(?:let|const)\s+selectedAccountIds\s*=\s*new Set\(\);", main_js))
+        self.assertNotIn("compactSelectedAccountIds", compact_js)
         self.assertNotIn("emailDetailSection", compact_js)
-        self.assertNotIn("document.getElementById('emailDetail')", compact_js)
+        self.assertNotIn("getElementById('emailDetail')", compact_js.replace('"', "'"))
 
     def test_compact_mode_renders_backend_summary_fields(self):
         client = self.app.test_client()

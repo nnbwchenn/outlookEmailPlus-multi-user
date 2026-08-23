@@ -1,19 +1,6 @@
 from __future__ import annotations
 
-"""
-TDD D 层：号池管理前端契约测试
-
-覆盖 docs/TDD/2026-05-18-Issue60-号池管理UI与状态维护TDD.md §8
-当前运行会失败（红）—— 前端模板和 JS 模块尚未创建。
-实现 templates/index.html 对应容器 + static/js/features/pool_admin.js 后，所有用例应通过（绿）。
-
-测试目标：
-1. [MVP] 页面容器存在（id 或 class）
-2. [MVP] 筛选控件文案存在
-3. [MVP] 前端模块声明了 pool admin loader
-4. [MVP] 前端模块声明了 pool admin action handler
-5. [MVP] claimed 保护有明确文案提示
-"""
+"""用户端不暴露邮箱池功能的前端回归契约。"""
 
 import unittest
 
@@ -42,151 +29,40 @@ class PoolAdminFrontendContractBase(unittest.TestCase):
             raise RuntimeError(f"测试用户登录失败 ({resp.status_code})")
 
 
-# ===== MVP: §8 前端契约 =====
+class PoolAdminUiRemovalTests(PoolAdminFrontendContractBase):
+    """邮箱池后端兼容保留，但用户端不得加载或展示其管理能力。"""
 
-
-class PoolAdminPageContainerTests(PoolAdminFrontendContractBase):
-    """页面入口与容器测试"""
-
-    def test_index_contains_pool_admin_page_container(self):
-        """页面中应存在号池管理的页面容器（id 或 class）"""
+    def test_index_has_no_pool_admin_navigation_or_controls(self):
         self._login()
         html = self._get_text("/")
+        forbidden = [
+            "pool-admin",
+            "poolAdmin",
+            "pool_admin",
+            "号池管理",
+            "addToPoolCheckbox",
+            "poolExternalEnabled",
+            "externalApiDisablePool",
+            "邮箱池",
+        ]
+        for marker in forbidden:
+            self.assertNotIn(marker, html, f"用户端不应暴露邮箱池标识: {marker}")
 
-        # 至少应包含以下任一标识：pool_admin / poolAdmin / pool-admin / 号池管理
-        has_container = any(
-            marker in html
-            for marker in [
-                "pool-admin",
-                "poolAdmin",
-                "pool_admin",
-                "号池管理",
-            ]
-        )
-        self.assertTrue(has_container, "index.html 应包含号池管理页面容器标识")
+    def test_pool_admin_script_is_not_served(self):
+        response = self.client.get("/static/js/features/pool_admin.js")
+        self.assertEqual(response.status_code, 404)
 
-    def test_index_contains_pool_admin_entry_button(self):
-        """页面中应有号池管理入口按钮或导航项"""
-        self._login()
-        html = self._get_text("/")
-
-        has_entry = any(
-            marker in html
-            for marker in [
-                "号池管理",
-                "pool-admin",
-                "poolAdmin",
-            ]
-        )
-        self.assertTrue(has_entry, "index.html 应包含号池管理入口")
-
-
-class PoolAdminFilterControlsTests(PoolAdminFrontendContractBase):
-    """筛选控件测试"""
-
-    def test_index_contains_pool_admin_filter_controls(self):
-        """筛选栏应包含池内/池外或 pool_status 相关控件"""
-        self._login()
-        html = self._get_text("/")
-
-        # 应有池内/池外筛选相关的文案或控件
-        has_filter = any(
-            marker in html
-            for marker in [
-                "in_pool",
-                "in-pool",
-                "池内",
-                "池外",
-                "pool_status",
-                "pool-status",
-            ]
-        )
-        self.assertTrue(has_filter, "index.html 应包含号池管理筛选控件文案")
-
-
-class PoolAdminJsModuleTests(PoolAdminFrontendContractBase):
-    """前端 JS 模块测试"""
-
-    def test_frontend_module_declares_pool_admin_loader(self):
-        """pool_admin.js 或其他 JS 应声明加载/初始化函数"""
-        # 检查 pool_admin.js 是否存在
-        resp = self.client.get("/static/js/features/pool_admin.js")
-        if resp.status_code == 200:
-            js = resp.data.decode("utf-8")
-            has_loader = any(
-                marker in js
-                for marker in [
-                    "loadPoolAdmin",
-                    "initPoolAdmin",
-                    "pool_admin",
-                    "poolAdmin",
-                    "PoolAdmin",
-                ]
-            )
-            self.assertTrue(has_loader, "pool_admin.js 应声明初始化/加载函数")
-        else:
-            # 如果文件不存在，在 main.js 或其他 features 中检查
-            main_js = self._get_text("/static/js/main.js")
-            has_loader = any(
-                marker in main_js
-                for marker in [
-                    "pool_admin",
-                    "poolAdmin",
-                    "PoolAdmin",
-                ]
-            )
-            self.assertTrue(has_loader, "main.js 或 pool_admin.js 应声明 pool admin 模块加载入口")
-
-    def test_frontend_module_declares_pool_admin_action_handler(self):
-        """前端模块应包含动作执行逻辑"""
-        resp = self.client.get("/static/js/features/pool_admin.js")
-        if resp.status_code == 200:
-            js = resp.data.decode("utf-8")
-            has_action = any(
-                marker in js
-                for marker in [
-                    "move_into_pool",
-                    "move_out_of_pool",
-                    "pool-admin/accounts",
-                    "action",
-                ]
-            )
-            self.assertTrue(has_action, "pool_admin.js 应包含动作处理逻辑")
-        else:
-            # 文件未创建时跳过，允许红阶段
-            self.skipTest("pool_admin.js 尚未创建")
-
-
-class PoolAdminClaimedProtectionCopyTests(PoolAdminFrontendContractBase):
-    """claimed 保护文案测试"""
-
-    def test_frontend_contains_claimed_protection_copy(self):
-        """前端应有 claimed 状态保护的明确文案"""
-        self._login()
-        html = self._get_text("/")
-
-        # 检查是否有 claimed 占用中相关文案
-        has_claimed_copy = any(
-            marker in html
-            for marker in [
-                "占用中",
-                "claimed",
-                "占用",
-            ]
-        )
-        if not has_claimed_copy:
-            # 如果 HTML 没有，检查 JS
-            resp = self.client.get("/static/js/features/pool_admin.js")
-            if resp.status_code == 200:
-                js = resp.data.decode("utf-8")
-                has_claimed_copy = any(marker in js for marker in ["claimed", "占用中", "占用"])
-            # 也检查 i18n
-            if not has_claimed_copy:
-                i18n_js = self._get_text("/static/js/i18n.js")
-                has_claimed_copy = "claimed" in i18n_js or "占用" in i18n_js
-
-        self.assertTrue(has_claimed_copy, "前端应有 claimed 状态保护相关文案")
-
-
+    def test_main_client_does_not_request_or_manage_pool(self):
+        main_js = self._get_text("/static/js/main.js")
+        overview_js = self._get_text("/static/js/features/overview.js")
+        forbidden = [
+            "loadPoolAdmin",
+            "pool-admin",
+            "/api/overview/pool",
+            "poolExternalEnabled",
+            "add_to_pool",
+        ]
+        for marker in forbidden:
+            self.assertNotIn(marker, main_js + overview_js, f"客户端不应保留邮箱池逻辑: {marker}")
 if __name__ == "__main__":
     unittest.main()

@@ -81,10 +81,6 @@
                         syncAccountSummaryToAccountCache(email, data.account_summary);
                     }
 
-                    if (typeof syncAccountSummaryToAccountCache === 'function' && data.account_summary) {
-                        syncAccountSummaryToAccountCache(email, data.account_summary);
-                    }
-
                     // 保存到缓存
                     emailListCache[cacheKey] = {
                         emails: currentEmails,
@@ -97,8 +93,6 @@
                     const methodTag = document.getElementById('methodTag');
                     methodTag.textContent = data.method;
                     methodTag.style.display = 'inline';
-
-                    document.getElementById('emailCount').textContent = `(${data.emails.length})`;
 
                     document.getElementById('emailCount').textContent = `(${currentEmails.length})`;
 
@@ -475,6 +469,15 @@
 
                 if (data.success) {
                     currentEmailDetail = data.email;
+
+                    // 标记已读：本地立即更新 + 服务端尽力而为（打开过的邮件不再显示未读样式）
+                    const localEmail = (currentEmails || []).find((e) => e.id === messageId);
+                    if (localEmail && localEmail.is_read === false) {
+                        localEmail.is_read = true;
+                        renderEmailList(currentEmails, { scrollToTop: false });
+                    }
+                    fetch(`/api/email-mark-read/${encodeURIComponent(currentAccount)}/${encodeURIComponent(messageId)}`, { method: 'POST' }).catch(() => {});
+
                     try {
                         renderEmailDetail(data.email, { source: 'mailbox' });
                     } catch (renderError) {

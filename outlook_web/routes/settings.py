@@ -38,6 +38,12 @@ def create_blueprint() -> Blueprint:
         view_func=settings_controller.api_test_verification_ai,
         methods=["POST"],
     )
+    # 上游 v2.9.x：AI 模型列表
+    bp.add_url_rule(
+        "/api/settings/verification-ai-models",
+        view_func=settings_controller.api_list_verification_ai_models,
+        methods=["POST"],
+    )
     bp.add_url_rule(
         "/api/settings/external-api-key/plaintext",
         view_func=settings_controller.api_get_external_api_key_plaintext,

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import threading
+import time
 from typing import Any
 
 import requests
@@ -16,6 +18,64 @@ GRAPH_MAIL_READ_SCOPES = ("Mail.Read", "Mail.ReadWrite")
 # Graph API 返回 401 时表示账号授权失效（与 token endpoint 失败不同）
 GRAPH_AUTH_EXPIRED_STATUS = 401
 
+# 进程级连接池：复用 TLS 连接，避免每次调用重复 TCP+TLS 握手（每次约省 100-200ms）
+_GRAPH_SESSION = requests.Session()
+_GRAPH_SESSION.headers.update({"Connection": "keep-alive"})
+
+# access_token 进程内缓存：微软令牌有效期 60-90 分钟，这里缓存 25 分钟。
+# 命中缓存可省去每次 ~0.3s 的令牌刷新往返；401 时按 client_id 失效并重取。
+_TOKEN_CACHE: dict[str, dict[str, Any]] = {}
+_TOKEN_CACHE_TTL_SECONDS = 1500
+_TOKEN_CACHE_LOCK = threading.Lock()
+
+
+def _token_cache_key(client_id: str, refresh_token: str) -> str:
+    """缓存键必须按账号隔离：多邮箱常共用同一公开 client_id，
+    若按 client_id 键会导致令牌串号（A 邮箱的邮件被 B 看到）。"""
+    import hashlib
+
+    raw = f"{client_id}|{refresh_token}"
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:32]
+
+
+def _token_cache_get(key: str) -> dict[str, Any] | None:
+    """返回 {'access_token': ..., 'scope': ...} 或 None；过期自动清除。"""
+    entry = _TOKEN_CACHE.get(key)
+    if not entry:
+        return None
+    if time.monotonic() - entry["ts"] > _TOKEN_CACHE_TTL_SECONDS:
+        with _TOKEN_CACHE_LOCK:
+            _TOKEN_CACHE.pop(key, None)
+        return None
+    return entry
+
+
+def _token_cache_get_token(key: str) -> str | None:
+    entry = _token_cache_get(key)
+    return entry["access_token"] if entry else None
+
+
+def _token_cache_set(
+    client_id: str, access_token: str, refresh_token: str | None, scope: str | None = None
+) -> None:
+    # 保存最新 refresh_token：微软会轮换 refresh_token，缓存旧值会在轮换后失效
+    with _TOKEN_CACHE_LOCK:
+        _TOKEN_CACHE[client_id] = {
+            "access_token": access_token,
+            "refresh_token": refresh_token,
+            "scope": str(scope or ""),
+            "ts": time.monotonic(),
+        }
+
+
+def invalidate_graph_token_cache(cache_key: str | None = None) -> None:
+    """401 时失效令牌缓存（指定账号缓存键或全部）。"""
+    with _TOKEN_CACHE_LOCK:
+        if cache_key:
+            _TOKEN_CACHE.pop(cache_key, None)
+        else:
+            _TOKEN_CACHE.clear()
+
 
 def build_proxies(proxy_url: str) -> dict[str, str] | None:
     """构建 requests 的 proxies 参数"""
@@ -30,11 +90,29 @@ def build_token_url(tenant: str | None = None) -> str:
     return TOKEN_URL_TEMPLATE.format(tenant=normalized_tenant)
 
 
-def get_access_token_graph_result(client_id: str, refresh_token: str, proxy_url: str | None = None) -> dict[str, Any]:
-    """获取 Graph API access_token（包含错误详情）"""
+def get_access_token_graph_result(
+    client_id: str,
+    refresh_token: str,
+    proxy_url: str | None = None,
+    *,
+    force_refresh: bool = False,
+) -> dict[str, Any]:
+    """获取 Graph API access_token（包含错误详情；进程内按账号缓存 25 分钟）"""
+    cache_key = _token_cache_key(str(client_id or ""), str(refresh_token or ""))
+    if not force_refresh:
+        cached = _token_cache_get(cache_key)
+        if cached:
+            return {
+                "success": True,
+                "access_token": cached["access_token"],
+                "refresh_token": refresh_token,
+                "new_refresh_token": None,
+                "scope": cached.get("scope", ""),
+                "_from_cache": True,
+            }
     try:
         proxies = build_proxies(proxy_url)
-        res = requests.post(
+        res = _GRAPH_SESSION.post(
             TOKEN_URL_GRAPH,
             data={
                 "client_id": client_id,
@@ -75,6 +153,12 @@ def get_access_token_graph_result(client_id: str, refresh_token: str, proxy_url:
 
         # 根据 Microsoft Learn 文档：refresh token 可能会在每次使用时"自我替换"，应保存新的 refresh_token（如有）。
         new_refresh_token = payload.get("refresh_token")
+        _token_cache_set(
+            cache_key,
+            str(access_token),
+            str(new_refresh_token) if new_refresh_token else None,
+            str(payload.get("scope") or ""),
+        )
         return {
             "success": True,
             "access_token": access_token,
@@ -159,7 +243,24 @@ def get_emails_graph(
         }
 
         proxies = build_proxies(proxy_url)
-        res = requests.get(url, headers=headers, params=params, timeout=30, proxies=proxies)
+        res = _GRAPH_SESSION.get(url, headers=headers, params=params, timeout=30, proxies=proxies)
+
+        # 缓存令牌可能已被微软侧吊销/轮换：401 时失效缓存并强制刷新一次后重试
+        if res.status_code == GRAPH_AUTH_EXPIRED_STATUS and token_result.get("_from_cache"):
+            invalidate_graph_token_cache(cache_key)
+            token_result = get_access_token_graph_result(
+                client_id, refresh_token, proxy_url, force_refresh=True
+            )
+            if token_result.get("success"):
+                headers["Authorization"] = f"Bearer {token_result['access_token']}"
+                res = _GRAPH_SESSION.get(url, headers=headers, params=params, timeout=30, proxies=proxies)
+            else:
+                return {
+                    "success": False,
+                    "auth_expired": True,
+                    "error": token_result.get("error")
+                    or build_error_payload("GRAPH_TOKEN_FAILED", "获取访问令牌失败", "GraphAPIError", 401, ""),
+                }
 
         if res.status_code != 200:
             details = get_response_details(res)
@@ -215,7 +316,7 @@ def get_email_detail_graph(
         }
 
         proxies = build_proxies(proxy_url)
-        res = requests.get(url, headers=headers, params=params, timeout=30, proxies=proxies)
+        res = _GRAPH_SESSION.get(url, headers=headers, params=params, timeout=30, proxies=proxies)
 
         if res.status_code != 200:
             return None
@@ -243,7 +344,7 @@ def get_email_raw_graph(
         }
 
         proxies = build_proxies(proxy_url)
-        res = requests.get(url, headers=headers, timeout=30, proxies=proxies)
+        res = _GRAPH_SESSION.get(url, headers=headers, timeout=30, proxies=proxies)
 
         if res.status_code != 200:
             return None
@@ -286,7 +387,7 @@ def test_refresh_token_with_rotation(
     last_error_msg = None
     for attempt in range(max_retries + 1):
         try:
-            res = requests.post(url, data=data, timeout=15, proxies=proxies)
+            res = _GRAPH_SESSION.post(url, data=data, timeout=15, proxies=proxies)
 
             if res.status_code == 200:
                 try:
@@ -376,7 +477,7 @@ def delete_emails_graph(
 
         try:
             proxies = build_proxies(proxy_url)
-            response = requests.post(
+            response = _GRAPH_SESSION.post(
                 "https://graph.microsoft.com/v1.0/$batch",
                 headers=headers,
                 json={"requests": batch_requests},
@@ -420,3 +521,32 @@ def delete_emails_graph(
         )
 
     return result
+
+
+def mark_email_read_graph(
+    client_id: str,
+    refresh_token: str,
+    message_id: str,
+    proxy_url: str | None = None,
+) -> bool:
+    """通过 Graph API 将邮件标记为已读（isRead=true）。失败返回 False，不抛异常。"""
+    access_token = get_access_token_graph(client_id, refresh_token, proxy_url)
+    if not access_token:
+        return False
+    try:
+        import requests as _requests
+
+        url = f"https://graph.microsoft.com/v1.0/me/messages/{message_id}"
+        resp = _requests.patch(
+            url,
+            headers={
+                "Authorization": f"Bearer {access_token}",
+                "Content-Type": "application/json",
+            },
+            json={"isRead": True},
+            timeout=10,
+            proxies=build_proxies(proxy_url),
+        )
+        return 200 <= resp.status_code < 300
+    except Exception:
+        return False

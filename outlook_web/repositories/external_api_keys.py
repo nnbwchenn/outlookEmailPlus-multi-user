@@ -2,12 +2,46 @@ from __future__ import annotations
 
 import json
 import secrets
+import sqlite3
 from collections.abc import Iterable
 from datetime import datetime, timezone
 from typing import Any
 
+# 成员级 Key：owner_user_id 非空；管理员全局 Key：owner_user_id IS NULL
+
 from outlook_web.db import get_db
 from outlook_web.security.crypto import decrypt_data, encrypt_data
+
+
+class ExternalApiKeyNameConflictError(RuntimeError):
+    """Raised when the database rejects a duplicate API Key name."""
+
+
+def _execute_key_write(db: sqlite3.Connection, sql: str, params: tuple[Any, ...]) -> sqlite3.Cursor:
+    try:
+        return db.execute(sql, params)
+    except sqlite3.IntegrityError as exc:
+        if "idx_external_api_keys_name_unique" in str(exc):
+            raise ExternalApiKeyNameConflictError("external_api_key_name_conflict") from exc
+        raise
+
+
+def _normalize_expires_at(value: Any) -> str | None:
+    text = str(value or "").strip()
+    return text or None
+
+
+def _is_expired(value: Any) -> bool:
+    expires_at = _normalize_expires_at(value)
+    if not expires_at:
+        return False
+    try:
+        parsed = datetime.fromisoformat(expires_at.replace("Z", "+00:00"))
+    except ValueError:
+        return True
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed <= datetime.now(timezone.utc)
 
 
 def _mask_secret_value(value: str, head: int = 4, tail: int = 4) -> str:
@@ -62,6 +96,14 @@ def _coerce_bool(value: Any, default: bool = True) -> bool:
     return default
 
 
+def _coerce_int(value: Any, default: int) -> int:
+    """安全 int 转换：失败返回 default（替代裸 int() 的统入口）。"""
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
 def _build_consumer_key(key_id: int | str) -> str:
     return f"key:{key_id}"
 
@@ -85,6 +127,9 @@ def _serialize_row(row: Any) -> dict[str, Any]:
         "enabled": bool(row["enabled"]),
         "allowed_emails": allowed_emails,
         "pool_access": bool(row["pool_access"]),
+        "owner_user_id": row["owner_user_id"] if "owner_user_id" in row.keys() else None,
+        "expires_at": (row["expires_at"] or "") if "expires_at" in row.keys() else "",
+        "expired": _is_expired(row["expires_at"]) if "expires_at" in row.keys() else False,
         "api_key_masked": _mask_secret_value(api_key_plain) if api_key_plain else "",
         "last_used_at": row["last_used_at"] or "",
         "created_at": row["created_at"] or "",
@@ -92,15 +137,31 @@ def _serialize_row(row: Any) -> dict[str, Any]:
     }
 
 
-def list_external_api_keys(*, include_disabled: bool = True) -> list[dict[str, Any]]:
+_EXTERNAL_API_KEY_COLUMNS = (
+    "id, name, api_key_encrypted, allowed_emails_json, pool_access, enabled, owner_user_id, "
+    "expires_at, last_used_at, created_at, updated_at"
+)
+
+
+def list_external_api_keys(
+    *, include_disabled: bool = True, owner_user_id: int | None = None, unowned_only: bool = False
+) -> list[dict[str, Any]]:
     db = get_db()
-    sql = """
-        SELECT id, name, api_key_encrypted, allowed_emails_json, pool_access, enabled, last_used_at, created_at, updated_at
+    sql = f"""
+        SELECT {_EXTERNAL_API_KEY_COLUMNS}
         FROM external_api_keys
     """
     params: list[Any] = []
+    conditions: list[str] = []
     if not include_disabled:
-        sql += " WHERE enabled = 1"
+        conditions.append("enabled = 1")
+    if owner_user_id is not None:
+        conditions.append("owner_user_id = ?")
+        params.append(_coerce_int(owner_user_id, 0))
+    if unowned_only:
+        conditions.append("owner_user_id IS NULL")
+    if conditions:
+        sql += " WHERE " + " AND ".join(conditions)
     sql += " ORDER BY id ASC"
     rows = db.execute(sql, params).fetchall()
     return [_serialize_row(row) for row in rows]
@@ -109,12 +170,12 @@ def list_external_api_keys(*, include_disabled: bool = True) -> list[dict[str, A
 def get_external_api_key_by_id(key_id: int) -> dict[str, Any] | None:
     db = get_db()
     row = db.execute(
-        """
-        SELECT id, name, api_key_encrypted, allowed_emails_json, pool_access, enabled, last_used_at, created_at, updated_at
+        f"""
+        SELECT {_EXTERNAL_API_KEY_COLUMNS}
         FROM external_api_keys
         WHERE id = ?
         """,
-        (int(key_id),),
+        (_coerce_int(key_id, 0),),
     ).fetchone()
     return _serialize_row(row) if row else None
 
@@ -126,13 +187,16 @@ def create_external_api_key(
     allowed_emails: Iterable[str] | None = None,
     pool_access: bool = False,
     enabled: bool = True,
+    owner_user_id: int | None = None,
+    expires_at: str | None = None,
     commit: bool = True,
 ) -> dict[str, Any]:
     db = get_db()
-    db.execute(
+    _execute_key_write(
+        db,
         """
-        INSERT INTO external_api_keys (name, api_key_encrypted, allowed_emails_json, pool_access, enabled, updated_at)
-        VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+        INSERT INTO external_api_keys (name, api_key_encrypted, allowed_emails_json, pool_access, enabled, owner_user_id, expires_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
         """,
         (
             str(name or "").strip(),
@@ -140,6 +204,8 @@ def create_external_api_key(
             _allowed_emails_json(allowed_emails),
             1 if _coerce_bool(pool_access, False) else 0,
             1 if _coerce_bool(enabled, True) else 0,
+            _coerce_int(owner_user_id, 0) if owner_user_id is not None else None,
+            _normalize_expires_at(expires_at),
         ),
     )
     if commit:
@@ -156,14 +222,16 @@ def update_external_api_key(
     allowed_emails: Iterable[str] | None = None,
     pool_access: bool | None = None,
     enabled: bool | None = None,
+    expires_at: str | None = None,
     commit: bool = True,
 ) -> dict[str, Any] | None:
-    existing = get_external_api_key_by_id(int(key_id))
+    existing = get_external_api_key_by_id(_coerce_int(key_id, 0))
     if not existing:
         return None
 
     db = get_db()
-    db.execute(
+    _execute_key_write(
+        db,
         """
         UPDATE external_api_keys
         SET name = ?,
@@ -171,6 +239,7 @@ def update_external_api_key(
             allowed_emails_json = ?,
             pool_access = ?,
             enabled = ?,
+            expires_at = ?,
             updated_at = CURRENT_TIMESTAMP
         WHERE id = ?
         """,
@@ -181,41 +250,39 @@ def update_external_api_key(
                 if api_key is not None
                 else db.execute(
                     "SELECT api_key_encrypted FROM external_api_keys WHERE id = ?",
-                    (int(key_id),),
+                    (_coerce_int(key_id, 0),),
                 ).fetchone()["api_key_encrypted"]
             ),
             _allowed_emails_json(existing["allowed_emails"] if allowed_emails is None else allowed_emails),
-            int(
-                _coerce_bool(
-                    existing["pool_access"] if pool_access is None else pool_access,
-                    bool(existing["pool_access"]),
-                )
-            ),
-            int(
-                _coerce_bool(
-                    existing["enabled"] if enabled is None else enabled,
-                    bool(existing["enabled"]),
-                )
-            ),
-            int(key_id),
+            _coerce_int(_coerce_bool(
+                existing["pool_access"] if pool_access is None else pool_access,
+                bool(existing["pool_access"]),
+            ), 0),
+            _coerce_int(_coerce_bool(
+                existing["enabled"] if enabled is None else enabled,
+                bool(existing["enabled"]),
+            ), 1),
+            _normalize_expires_at(existing["expires_at"] if expires_at is None else expires_at),
+            _coerce_int(key_id, 0),
         ),
     )
     if commit:
         db.commit()
-    return get_external_api_key_by_id(int(key_id))
+    return get_external_api_key_by_id(_coerce_int(key_id, 0))
 
 
 def delete_external_api_key(key_id: int, *, commit: bool = True) -> bool:
     db = get_db()
-    cursor = db.execute("DELETE FROM external_api_keys WHERE id = ?", (int(key_id),))
+    cursor = db.execute("DELETE FROM external_api_keys WHERE id = ?", (_coerce_int(key_id, 0),))
     if commit:
         db.commit()
     return cursor.rowcount > 0
 
 
 def replace_external_api_keys(items: list[dict[str, Any]], *, commit: bool = True) -> list[dict[str, Any]]:
-    existing_rows = list_external_api_keys(include_disabled=True)
-    existing_ids = {int(item["id"]): item for item in existing_rows}
+    # 仅替换管理员全局 Key；成员自建 Key（owner_user_id 非空）不受管理员全量替换影响
+    existing_rows = list_external_api_keys(include_disabled=True, unowned_only=True)
+    existing_ids = {_coerce_int(item["id"], -1): item for item in existing_rows}
     seen_ids: set[int] = set()
 
     for raw_item in items:
@@ -225,6 +292,7 @@ def replace_external_api_keys(items: list[dict[str, Any]], *, commit: bool = Tru
         allowed_emails = raw_item.get("allowed_emails")
         pool_access = _coerce_bool(raw_item.get("pool_access", False), False)
         enabled = _coerce_bool(raw_item.get("enabled", True), True)
+        expires_at = _normalize_expires_at(raw_item.get("expires_at"))
 
         if item_id in (None, ""):
             create_external_api_key(
@@ -233,11 +301,12 @@ def replace_external_api_keys(items: list[dict[str, Any]], *, commit: bool = Tru
                 allowed_emails=_parse_allowed_emails(allowed_emails),
                 pool_access=pool_access,
                 enabled=enabled,
+                expires_at=expires_at,
                 commit=False,
             )
             continue
 
-        key_id = int(item_id)
+        key_id = _coerce_int(item_id, -1)
         existing = existing_ids.get(key_id)
         if not existing:
             continue
@@ -251,17 +320,30 @@ def replace_external_api_keys(items: list[dict[str, Any]], *, commit: bool = Tru
             allowed_emails=_parse_allowed_emails(allowed_emails) if allowed_emails is not None else existing["allowed_emails"],
             pool_access=pool_access,
             enabled=enabled,
+            expires_at=_normalize_expires_at(existing["expires_at"]) if raw_item.get("expires_at") in (None, "") else expires_at,
             commit=False,
         )
 
     for key_id in existing_ids:
-        if key_id not in seen_ids:
+        if key_id not in seen_ids and existing_ids[key_id].get("owner_user_id") is None:
             delete_external_api_key(key_id, commit=False)
 
     if commit:
         get_db().commit()
 
     return list_external_api_keys(include_disabled=True)
+
+
+def get_external_api_key_plaintext_by_id(key_id: int) -> str:
+    """按 id 返回 Key 明文（仅服务端内部/归属校验后使用）。"""
+    db = get_db()
+    row = db.execute(
+        "SELECT api_key_encrypted FROM external_api_keys WHERE id = ?",
+        (_coerce_int(key_id, 0),),
+    ).fetchone()
+    if not row:
+        return ""
+    return _decrypt_api_key(row["api_key_encrypted"] or "")
 
 
 def has_any_external_api_key_configured(*, enabled_only: bool = False) -> bool:
@@ -271,7 +353,7 @@ def has_any_external_api_key_configured(*, enabled_only: bool = False) -> bool:
     if enabled_only:
         sql += " WHERE enabled = 1"
     row = db.execute(sql, params).fetchone()
-    return bool(row and int(row["c"] or 0) > 0)
+    return bool(row and _coerce_int(row["c"], 0) > 0)
 
 
 def find_external_api_key_by_plaintext(provided_key: str) -> dict[str, Any] | None:
@@ -280,8 +362,8 @@ def find_external_api_key_by_plaintext(provided_key: str) -> dict[str, Any] | No
         return None
 
     db = get_db()
-    rows = db.execute("""
-        SELECT id, name, api_key_encrypted, allowed_emails_json, pool_access, enabled, last_used_at, created_at, updated_at
+    rows = db.execute(f"""
+        SELECT {_EXTERNAL_API_KEY_COLUMNS}
         FROM external_api_keys
         WHERE enabled = 1
         ORDER BY id ASC
@@ -303,7 +385,7 @@ def mark_external_api_key_used(key_id: int) -> None:
         SET last_used_at = ?, updated_at = CURRENT_TIMESTAMP
         WHERE id = ?
         """,
-        (used_at, int(key_id)),
+        (used_at, _coerce_int(key_id, 0)),
     )
     db.commit()
 
@@ -384,9 +466,9 @@ def get_external_api_usage_summary(
     result: dict[str, dict[str, Any]] = {}
     for row in rows:
         result[row["consumer_key"]] = {
-            "today_total_count": int(row["total_count"] or 0),
-            "today_success_count": int(row["success_count"] or 0),
-            "today_error_count": int(row["error_count"] or 0),
+            "today_total_count": _coerce_int(row["total_count"], 0),
+            "today_success_count": _coerce_int(row["success_count"], 0),
+            "today_error_count": _coerce_int(row["error_count"], 0),
             "today_last_used_at": row["last_used_at"] or "",
         }
     return result

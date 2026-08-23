@@ -249,6 +249,11 @@ def api_get_accounts() -> Any:
                 "last_refresh_at": acc.get("last_refresh_at", ""),
                 "last_refresh_status": (last_refresh_log.get("status") if last_refresh_log else None),
                 "last_refresh_error": (last_refresh_log.get("error_message") if last_refresh_log else None),
+                # Token 状态徽章数据源：最近一次刷新日志推导（无记录=从未刷新，前端不显示徽章）
+                "token_status": (
+                    "valid" if (last_refresh_log and last_refresh_log.get("status") == "success")
+                    else ("invalid" if last_refresh_log else None)
+                ),
                 "created_at": acc.get("created_at", ""),
                 "updated_at": acc.get("updated_at", ""),
                 "tags": acc.get("tags", []),
@@ -1936,6 +1941,10 @@ def api_search_accounts() -> Any:
                 "notification_enabled": bool(acc.get("telegram_push_enabled")),
                 "last_refresh_status": (last_refresh_log.get("status") if last_refresh_log else None),
                 "last_refresh_error": (last_refresh_log.get("error_message") if last_refresh_log else None),
+                "token_status": (
+                    "valid" if (last_refresh_log and last_refresh_log.get("status") == "success")
+                    else ("invalid" if last_refresh_log else None)
+                ),
                 "latest_email_subject": acc.get("latest_email_subject", ""),
                 "latest_email_from": acc.get("latest_email_from", ""),
                 "latest_email_folder": acc.get("latest_email_folder", ""),

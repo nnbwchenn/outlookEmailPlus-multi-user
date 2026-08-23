@@ -154,6 +154,62 @@ def _configure_email_notification_job(scheduler, app) -> None:
     print(f"✓ 统一通知分发 Job 已配置（轮询间隔：{interval} 秒）")
 
 
+def _configure_graph_token_prewarm_job(scheduler, app) -> None:
+    """注册 Graph 令牌预热 Job。
+
+    令牌进程内缓存 TTL 为 25 分钟；本 Job 每 20 分钟跑一次（缓存命中则零网络开销），
+    保证用户点击验证码/查看邮件时永远命中热缓存，不再承担冷启动令牌获取耗时。
+    启动时立即执行一次预热。"""
+    from datetime import datetime
+
+    from outlook_web.repositories.accounts import (
+        load_accounts,
+        update_refresh_token_if_changed,
+    )
+    from outlook_web.services.graph import get_access_token_graph_result
+
+    def run_prewarm():
+        with app.app_context():
+            try:
+                accounts = load_accounts()
+            except Exception:
+                return
+            for acc in accounts:
+                if str(acc.get("account_type") or "outlook").strip().lower() != "outlook":
+                    continue
+                client_id = str(acc.get("client_id") or "").strip()
+                refresh_token = str(acc.get("refresh_token") or "").strip()
+                if not client_id or not refresh_token or refresh_token.startswith("enc:"):
+                    continue
+                try:
+                    result = get_access_token_graph_result(client_id, refresh_token)
+                    # 微软可能轮换 refresh_token，持久化避免缓存过期后旧值失效
+                    new_rt = str(result.get("new_refresh_token") or "").strip()
+                    if new_rt:
+                        update_refresh_token_if_changed(int(acc["id"]), new_rt)
+                except Exception:
+                    continue
+
+    try:
+        scheduler.remove_job("graph_token_prewarm_job")
+    except Exception:
+        pass
+
+    scheduler.add_job(
+        func=run_prewarm,
+        trigger="interval",
+        seconds=1200,
+        id="graph_token_prewarm_job",
+        name="Graph 令牌预热",
+        replace_existing=True,
+        max_instances=1,
+        coalesce=True,
+        misfire_grace_time=300,
+        next_run_time=datetime.now(),
+    )
+    print("✓ Graph 令牌预热 Job 已配置（间隔：1200 秒，启动即预热）")
+
+
 def _configure_probe_poll_job(scheduler, app) -> None:
     """P2: 注册异步探测轮询 Job。每 5 秒执行一次，处理 pending 探测并清理过期记录。"""
     from outlook_web.services.external_api import (
@@ -283,6 +339,7 @@ def configure_scheduler_jobs(scheduler, app, test_refresh_token) -> None:
     )
 
     _configure_email_notification_job(scheduler, app)
+    _configure_graph_token_prewarm_job(scheduler, app)
     _configure_probe_poll_job(scheduler, app)
     _configure_pool_maintenance_jobs(scheduler)
 

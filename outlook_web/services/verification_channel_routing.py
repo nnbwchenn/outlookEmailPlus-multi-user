@@ -497,27 +497,41 @@ def extract_verification_for_outlook(
 
     for channel_phase in _verification_channel_phases(channel_plan):
         candidate_emails: list[dict[str, Any]] = []
+        # 并发抓取同阶段内的所有 渠道×文件夹（互不依赖；串行时每路 0.7-1s 线性累加）
+        from concurrent.futures import ThreadPoolExecutor as _Pool
+
+        _targets = [(ch, fo) for ch in channel_phase for fo in (_candidate_folders_for_channel(ch) or ["inbox"])]
+
+        def _fetch_channel_target(ch: str, fo: str):
+            if _channel_group(ch) == "imap":
+                return fetch_emails_and_detail_for_channel(
+                    account=account, channel=ch, proxy_url=proxy_url, folder=fo, top=VERIFICATION_FETCH_TOP
+                )
+            return fetch_emails_for_channel(
+                account=account, channel=ch, proxy_url=proxy_url, folder=fo, top=VERIFICATION_FETCH_TOP
+            )
+
+        _phase_results: dict[tuple[str, str], dict[str, Any]] = {}
+        if len(_targets) > 1:
+            with _Pool(max_workers=len(_targets)) as pool:
+                _futures = {pool.submit(_fetch_channel_target, ch, fo): (ch, fo) for ch, fo in _targets}
+                for _fut in _futures:
+                    _ch, _fo = _futures[_fut]
+                    try:
+                        _phase_results[(_ch, _fo)] = _fut.result() or {"success": False}
+                    except Exception as _exc:
+                        _phase_results[(_ch, _fo)] = {"success": False, "error": str(_exc)}
+        else:
+            for ch, fo in _targets:
+                _phase_results[(ch, fo)] = _fetch_channel_target(ch, fo)
+
+        _phase_failures = sum(1 for r in _phase_results.values() if not r.get("success"))
         for channel in channel_phase:
             last_log_channel = channel or last_log_channel
             channel_available = False
             channel_folders = _candidate_folders_for_channel(channel) or ["inbox"]
             for folder in channel_folders:
-                if _channel_group(channel) == "imap":
-                    channel_result = fetch_emails_and_detail_for_channel(
-                        account=account,
-                        channel=channel,
-                        proxy_url=proxy_url,
-                        folder=folder,
-                        top=VERIFICATION_FETCH_TOP,
-                    )
-                else:
-                    channel_result = fetch_emails_for_channel(
-                        account=account,
-                        channel=channel,
-                        proxy_url=proxy_url,
-                        folder=folder,
-                        top=VERIFICATION_FETCH_TOP,
-                    )
+                channel_result = _phase_results.get((channel, folder)) or {"success": False}
 
                 if not channel_result.get("success"):
                     error_key = channel if len(channel_folders) == 1 else f"{channel}:{folder}"
@@ -564,8 +578,64 @@ def extract_verification_for_outlook(
             emails = phase_emails
             break
 
+        # 新规则：整箱无邮件时立即返回，跳过剩余兜底渠道
+        if candidate_emails or _phase_failures:
+            continue
+        if any_channel_read_success and not from_contains and not subject_contains:
+            return {
+                "success": False,
+                "error_code": "EMAIL_BOX_EMPTY",
+                "error_message": "邮箱中暂无邮件",
+                "error_status": 404,
+                "upstream_errors": upstream_errors,
+                "_log_channel": last_log_channel,
+                "_log_used_ai": False,
+            }
+
     if emails:
         sorted_emails = sorted(emails, key=_message_sort_key, reverse=True)
+
+        # 并发预取缺失详情的候选（每封 ~0.8s，串行会线性累加；提取仍按新→旧顺序进行）。
+        # 仅 Graph 渠道需要单独抓详情；IMAP 渠道的 detail 已由
+        # fetch_emails_and_detail_for_channel 自带并写入 detail_cache。
+        from concurrent.futures import ThreadPoolExecutor as _DetailPool
+
+        _pending_details: list[tuple[dict[str, Any], tuple[str, str, str]]] = []
+        _seen_detail_keys: set[tuple[str, str, str]] = set()
+        for latest in sorted_emails:
+            channel = str(latest.get("_verification_channel") or "")
+            folder = str(latest.get("folder") or "inbox").strip().lower() or "inbox"
+            latest_id = str(latest.get("id") or "")
+            last_log_channel = channel or last_log_channel
+            if channel not in detail_cache:
+                pass  # 渠道无任何缓存详情
+            key = (channel, folder, latest_id)
+            if key in detail_cache or key in _seen_detail_keys:
+                continue
+            _seen_detail_keys.add(key)
+            if _channel_group(channel) == "imap":
+                continue  # IMAP 详情已随列表返回，不单独预取
+            _pending_details.append((latest, key))
+
+        if _pending_details:
+
+            def _fetch_missing_detail(key: tuple[str, str, str]) -> dict[str, Any] | None:
+                ch, fo, mid = key
+                return fetch_email_detail_for_channel(
+                    account=account, channel=ch, message_id=mid, proxy_url=proxy_url, folder=fo
+                )
+
+            with _DetailPool(max_workers=min(4, len(_pending_details))) as pool:
+                for fut, (_latest_ref, key) in zip(
+                    pool.map(_fetch_missing_detail, [k for _, k in _pending_details]),
+                    _pending_details,
+                ):
+                    try:
+                        detail_result = fut
+                    except Exception:
+                        detail_result = None
+                    if detail_result:
+                        detail_cache[key] = detail_result
 
         for latest in sorted_emails:
             channel = str(latest.get("_verification_channel") or "")
@@ -574,14 +644,6 @@ def extract_verification_for_outlook(
             last_log_channel = channel or last_log_channel
 
             detail = detail_cache.get((channel, folder, latest_id))
-            if detail is None:
-                detail = fetch_email_detail_for_channel(
-                    account=account,
-                    channel=channel,
-                    message_id=latest_id,
-                    proxy_url=proxy_url,
-                    folder=folder,
-                )
 
             if not detail:
                 continue

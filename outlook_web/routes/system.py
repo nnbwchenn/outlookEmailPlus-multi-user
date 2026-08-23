@@ -9,6 +9,8 @@ def create_blueprint() -> Blueprint:
     """创建 system Blueprint"""
     bp = Blueprint("system", __name__)
     bp.add_url_rule("/healthz", view_func=system_controller.healthz, methods=["GET"])
+    # 历史残留 Service Worker 自愈清除（见 system_controller.service_worker_kill_switch）
+    bp.add_url_rule("/sw.js", view_func=system_controller.service_worker_kill_switch, methods=["GET"])
     bp.add_url_rule(
         "/api/bootstrap",
         view_func=system_controller.api_bootstrap,

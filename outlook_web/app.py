@@ -33,6 +33,7 @@ def create_app(*, autostart_scheduler: bool | None = None):
         )
         from outlook_web.routes import (
             accounts,
+            activation_codes as activation_codes_routes,
             audit,
             emails,
             external_pool,
@@ -143,6 +144,15 @@ def create_app(*, autostart_scheduler: bool | None = None):
         app.register_error_handler(HTTPException, handle_http_exception)
         app.register_error_handler(Exception, handle_exception)
 
+        # 安全响应头：防点击劫持 / MIME 嗅探 / 引用泄露
+        @app.after_request
+        def set_security_headers(response):
+            response.headers.setdefault("X-Frame-Options", "DENY")
+            response.headers.setdefault("X-Content-Type-Options", "nosniff")
+            response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+            response.headers.setdefault("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
+            return response
+
         # 静态文件缓存控制（防止浏览器缓存旧版本 JS/CSS）
         @app.after_request
         def set_static_cache_control(response):
@@ -170,6 +180,7 @@ def create_app(*, autostart_scheduler: bool | None = None):
         app.register_blueprint(tags.create_blueprint())
         app.register_blueprint(accounts.create_blueprint())
         app.register_blueprint(users_routes.create_blueprint())
+        app.register_blueprint(activation_codes_routes.create_blueprint())
         app.register_blueprint(user_notifications_routes.create_blueprint())
         app.register_blueprint(emails.create_blueprint())
         app.register_blueprint(settings.create_blueprint())

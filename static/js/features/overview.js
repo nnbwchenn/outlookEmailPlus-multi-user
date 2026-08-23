@@ -25,22 +25,6 @@ function initOverview() {
     if (!page) return;
     syncOverviewStaticText();
 
-    // 多用户：member 隐藏「邮箱池」「系统活动」tab（邮箱池为管理员能力，系统活动为全局运营视图）
-    const currentUser = window.__currentUser;
-    if (currentUser && currentUser.role !== 'admin') {
-        document.querySelectorAll('.ov-tab[data-tab="pool"], .ov-tab[data-tab="activity"]').forEach((tab) => {
-            tab.style.display = 'none';
-        });
-        document.querySelectorAll('.ov-tab-pane[data-tab="pool"], .ov-tab-pane[data-tab="activity"]').forEach((pane) => {
-            pane.style.display = 'none';
-        });
-        // 若当前激活的是隐藏 tab，切回总览
-        const activeTab = document.querySelector('.ov-tab.active');
-        if (activeTab && ['pool', 'activity'].includes(activeTab.dataset.tab)) {
-            switchOverviewTab('summary');
-        }
-    }
-
     // 跨断点切换（平板/电脑 ↔ 手机）时重置 Tab 行滚动位置：
     // 避免小屏下容器残留 scrollLeft 导致「总览」等首项按钮被裁切在左侧。
     if (!window.__overviewResizeBound) {
@@ -141,7 +125,6 @@ async function loadOverviewTab(tabId, forceReload = false) {
         summary: '/api/overview/summary',
         verification: '/api/overview/verification',
         'external-api': '/api/overview/external-api',
-        pool: '/api/overview/pool',
         activity: '/api/overview/activity'
     };
     const endpoint = endpointMap[tabId];
@@ -170,7 +153,6 @@ function renderOverviewTab(tabId, data) {
         summary: renderOverviewSummary,
         verification: renderVerificationStats,
         'external-api': renderExternalApiStats,
-        pool: renderPoolStats,
         activity: renderActivityStats
     };
     const renderer = renderers[tabId];
@@ -192,7 +174,7 @@ function renderOverviewError(tabId) {
 function syncOverviewStaticText() {
     const textMap = {
         'ov-page-eyebrow': '玻璃态概览面板',
-        'ov-page-subtitle': '账号、验证码、对外 API、邮箱池与系统活动统一看板',
+        'ov-page-subtitle': '账号、验证码、对外 API 与系统活动统一看板',
         'ov-refresh-label': '最近刷新：'
     };
     Object.keys(textMap).forEach((id) => {
@@ -230,7 +212,6 @@ function syncOverviewStaticText() {
         summary: '总览',
         verification: '验证码提取',
         'external-api': '对外 API',
-        pool: '邮箱池',
         activity: '系统活动'
     };
     document.querySelectorAll('.ov-tab').forEach((button) => {
@@ -251,14 +232,12 @@ function renderOverviewSummary(data) {
     if (!container) return;
 
     const accountStatus = data.account_status || {};
-    const pool = data.pool_snapshot || {};
     const refresh = data.refresh_health || {};
     const kpi = data.kpi || {};
 
     container.innerHTML = `
         <div class="kpi-row">
-            ${renderKpiCard('总账号数', formatNumber(accountStatus.total || 0), ovLabelValue('活跃', formatNumber(accountStatus.active || 0)), 'kpi-primary', '快速观察账号池总体规模，以及当前真正处于活跃状态的账号占比。')}
-            ${renderKpiCard('邮箱池可用', formatNumber(pool.available || 0), ovLabelValue('占用', formatNumber(pool.in_use || 0)), 'kpi-success', '这张卡片更适合盯实时供给，避免申领高峰时可用量突然见底。')}
+            ${renderKpiCard('总账号数', formatNumber(accountStatus.total || 0), ovLabelValue('活跃', formatNumber(accountStatus.active || 0)), 'kpi-primary', '查看当前账号总量和活跃状态。')}
             ${renderKpiCard('今日验证码提取', formatNumber(kpi.verification_extracted || 0), ovLabelValue('AI 使用', formatNumber(kpi.ai_used_count || 0)), 'kpi-accent', '用来快速判断今天验证链路的真实活跃度。')}
             ${renderKpiCard('最近刷新成功率', formatPercent(refresh.success_rate_7d || 0), ovLabelValue('失败', formatNumber(refresh.last_fail_count || 0)), 'kpi-warn', '当这张卡片连续下滑时，优先检查刷新任务、凭据有效性和网络稳定性。')}
         </div>
@@ -273,18 +252,6 @@ function renderOverviewSummary(data) {
                     { label: '过期', value: accountStatus.expired || 0, total: accountStatus.total || 0, tone: 'danger' },
                     { label: '待刷新', value: accountStatus.pending_refresh || 0, total: accountStatus.total || 0, tone: 'warn' },
                     { label: '异常', value: accountStatus.error || 0, total: accountStatus.total || 0, tone: 'primary' }
-                ])
-            })}
-            ${renderDataCard({
-                title: '邮箱池快照',
-                icon: '◌',
-                badge: '供给',
-                hoverNote: '这张卡片更适合判断池子是否健康，尤其是可用、占用和冷却之间的结构平衡。',
-                body: renderProgressBlock([
-                    { label: '可用', value: pool.available || 0, total: pool.total || 0, tone: 'jade' },
-                    { label: '占用中', value: pool.in_use || 0, total: pool.total || 0, tone: 'primary' },
-                    { label: '冷却中', value: pool.cooldown || 0, total: pool.total || 0, tone: 'warn' },
-                    { label: '已使用', value: pool.used || 0, total: pool.total || 0, tone: 'accent' }
                 ])
             })}
             ${renderDataCard({
@@ -437,81 +404,16 @@ function renderExternalApiStats(data) {
     renderBarChart(document.getElementById('ov-external-chart'), dailySeries);
 }
 
-function renderPoolStats(data) {
-    const container = getOverviewContainer('pool');
-    if (!container) return;
-
-    const kpi = data.kpi || {};
-    const dist = data.operation_distribution || {};
-    const recent = Array.isArray(data.recent_operations) ? data.recent_operations : [];
-    const topProjects = Array.isArray(data.project_top5) ? data.project_top5 : [];
-
-    container.innerHTML = `
-        <div class="kpi-row">
-            ${renderKpiCard('可用账号', formatNumber(kpi.available || 0), ovLabelValue('占用', formatNumber(kpi.in_use || 0)), 'kpi-primary', '先看可用与占用的对比，能快速判断池子是不是正被持续抽空。')}
-            ${renderKpiCard('冷却中', formatNumber(kpi.cooldown || 0), ovLabelValue('已使用', formatNumber(kpi.used || 0)), 'kpi-warn', '冷却中高说明周转变慢，已使用高说明池子消耗速度偏快。')}
-            ${renderKpiCard('近 7 天领取', formatNumber(kpi.claim_count_7d || 0), ovLabelValue('完成率', formatPercent(kpi.complete_success_rate || 0)), 'kpi-success', '领取量高但完成率低时，优先排查任务完成链路或外部使用质量。')}
-            ${renderKpiCard('最长占用', formatDurationSeconds(kpi.max_claimed_duration_s || 0), '当前占用中', 'kpi-accent', '长时间不释放通常代表外部任务卡住，适合直接盯这张卡片。')}
-        </div>
-        <div class="two-col">
-            ${renderDataCard({
-                title: '操作分布',
-                icon: '◑',
-                badge: '池子',
-                hoverNote: 'Claim、Complete、Release、Expire 的相对关系，比单看数量更能说明池子的运作状态。',
-                body: renderProgressBlock([
-                    { label: '领取', value: dist.claim || 0, total: totalValues(dist), tone: 'primary' },
-                    { label: '完成', value: dist.complete || 0, total: totalValues(dist), tone: 'jade' },
-                    { label: '释放', value: dist.release || 0, total: totalValues(dist), tone: 'accent' },
-                    { label: '过期回收', value: dist.expire || 0, total: totalValues(dist), tone: 'danger' }
-                ])
-            })}
-            ${renderDataCard({
-                title: '项目 Top 5',
-                icon: '◈',
-                badge: '项目',
-                hoverNote: '看哪些项目在高频使用池子，也能顺手判断复用率是否集中在少数项目。',
-                body: renderTable(
-                    ['项目', '账号数', '成功数', '复用率'],
-                    topProjects.map((item) => [
-                        esc(item.project_key || '--'),
-                        formatNumber(item.account_count || 0),
-                        formatNumber(item.success_count || 0),
-                        formatPercent(item.reuse_rate || 0)
-                    ]),
-                    4
-                )
-            })}
-        </div>
-        ${renderDataCard({
-            title: '最近邮箱池操作',
-            icon: '⌘',
-            badge: '流转',
-            hoverNote: '这里适合快速肉眼确认最近的领取、释放和完成是否符合预期节奏。',
-            className: 'ov-mt',
-            body: renderTable(
-                ['时间', '账号', '动作', '调用方', '项目', '结果'],
-                recent.map((item) => [
-                    esc(item.time || '--'),
-                    esc(item.account_email || '--'),
-                    esc(formatPoolActionLabel(item.action || '--')),
-                    esc(item.caller_id || '--'),
-                    esc(item.project_key || '--'),
-                    esc(formatTimelineStatus(item.result || '--'))
-                ]),
-                6
-            )
-        })}
-    `;
-}
-
 function renderActivityStats(data) {
     const container = getOverviewContainer('activity');
     if (!container) return;
 
     const kpi = data.kpi || {};
     const notificationStats = data.notification_stats || {};
-    const timeline = Array.isArray(data.timeline) ? data.timeline : [];
+    const timeline = (Array.isArray(data.timeline) ? data.timeline : []).filter((item) => {
+        const action = String(item && item.action || '').toLowerCase();
+        return !['pool', 'claim', 'release', 'complete'].some((keyword) => action.includes(keyword));
+    });
 
     container.innerHTML = `
         <div class="kpi-row">
@@ -776,18 +678,6 @@ function formatTimelineStatus(value) {
     return ovT(mapped[normalized] || raw || '--');
 }
 
-function formatPoolActionLabel(value) {
-    const raw = String(value || '').trim();
-    const normalized = raw.toLowerCase();
-    const mapped = {
-        claim: '领取',
-        complete: '完成',
-        release: '释放',
-        expire: '过期回收'
-    };
-    return ovT(mapped[normalized] || raw || '--');
-}
-
 function pickTimelineIcon(action) {
     const text = String(action || '').toLowerCase();
     // 统一返回内联 SVG（Feather 风格）
@@ -795,13 +685,11 @@ function pickTimelineIcon(action) {
         verification: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>',
         notification: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>',
         external: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>',
-        pool: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>',
         default: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>',
     };
     if (text.includes('verification')) return ICONS.verification;
     if (text.includes('notification')) return ICONS.notification;
     if (text.includes('external')) return ICONS.external;
-    if (text.includes('pool') || text.includes('claim') || text.includes('release') || text.includes('complete')) return ICONS.pool;
     return ICONS.default;
 }
 

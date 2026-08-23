@@ -168,7 +168,9 @@
                         if (!data) return;
                         hasSuccess = true;
                         if (data.emails && Array.isArray(data.emails)) {
-                            data.emails.forEach(function(e) { if (e && e.id) allIds.add(e.id); });
+                            data.emails.forEach(function(e) {
+                                if (e && e.id !== undefined && e.id !== null) allIds.add(String(e.id));
+                            });
                         }
                         var summary = data.account_summary || data.summary;
                         if (summary) {
@@ -244,20 +246,30 @@
 
             pollMap.set(email, state);
 
+            // Baseline 必须在首次轮询前完整读取。只等待 fetch 本身会留下竞态：
+            // response.json() 尚未完成时首次轮询已经返回，已有邮件会被误判为新邮件。
             Promise.allSettled([
                 fetch('/api/emails/' + encodeURIComponent(email) + '?folder=inbox'),
                 fetch('/api/emails/' + encodeURIComponent(email) + '?folder=sentitems')
             ]).then(function(results) {
-                results.forEach(function(r) {
-                    if (r.status === 'fulfilled' && r.value && r.value.ok) {
-                        r.value.json().then(function(payload) {
-                            if (payload && payload.emails && Array.isArray(payload.emails)) {
-                                payload.emails.forEach(function(e) { if (e && e.id) state.baselineIds.add(e.id); });
+                return Promise.all(results.map(function(r) {
+                    if (r.status !== 'fulfilled' || !r.value || !r.value.ok) {
+                        return null;
+                    }
+                    return r.value.json().catch(function() { return null; });
+                }));
+            }).then(function(payloads) {
+                payloads.forEach(function(payload) {
+                    if (!payload) return;
+                    if (payload.emails && Array.isArray(payload.emails)) {
+                        payload.emails.forEach(function(e) {
+                            if (e && e.id !== undefined && e.id !== null) {
+                                state.baselineIds.add(String(e.id));
                             }
-                            if (payload && payload.account_summary && typeof syncAccountSummaryToAccountCache === 'function') {
-                                syncAccountSummaryToAccountCache(email, payload.account_summary);
-                            }
-                        }).catch(function() {});
+                        });
+                    }
+                    if (payload.account_summary && typeof syncAccountSummaryToAccountCache === 'function') {
+                        syncAccountSummaryToAccountCache(email, payload.account_summary);
                     }
                 });
 

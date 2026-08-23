@@ -548,3 +548,82 @@ def enhance_verification_with_ai_fallback(
     result["ai_used"] = True
 
     return _apply_output_policy(result)
+
+
+def _normalize_verification_ai_models_endpoint(base_url: str) -> str:
+    value = str(base_url or "").strip().rstrip("/")
+    if not value:
+        return ""
+    suffix = "/chat/completions"
+    if value.lower().endswith(suffix):
+        value = value[: -len(suffix)].rstrip("/")
+    return value + "/models"
+
+
+def list_verification_ai_models(base_url: str, api_key: str, *, timeout: int = 8) -> dict[str, Any]:
+    """拉取 OpenAI 兼容服务的可用模型列表（供设置页下拉选择）。"""
+    endpoint = _normalize_verification_ai_models_endpoint(base_url)
+    token = str(api_key or "").strip()
+    if not endpoint or not token:
+        return {
+            "ok": False,
+            "error": "config_incomplete",
+            "message": "请填写 Base URL 和 API Key",
+            "endpoint": endpoint,
+            "models": [],
+        }
+
+    started_at = time.perf_counter()
+    try:
+        response = requests.get(
+            endpoint,
+            headers={"Authorization": f"Bearer {token}", "Accept": "application/json"},
+            timeout=timeout,
+        )
+        latency_ms = round((time.perf_counter() - started_at) * 1000)
+        if not 200 <= response.status_code < 300:
+            return {
+                "ok": False,
+                "error": "http_error",
+                "message": f"模型列表请求失败（HTTP {response.status_code}）",
+                "endpoint": endpoint,
+                "http_status": response.status_code,
+                "latency_ms": latency_ms,
+                "models": [],
+            }
+
+        payload = response.json()
+        rows = payload.get("data") if isinstance(payload, dict) else None
+        models = sorted(
+            {
+                str(item.get("id") or "").strip()
+                for item in (rows or [])
+                if isinstance(item, dict) and str(item.get("id") or "").strip()
+            }
+        )
+        if not models:
+            return {
+                "ok": False,
+                "error": "invalid_response_format",
+                "message": "服务已响应，但未返回可用模型名称",
+                "endpoint": endpoint,
+                "http_status": response.status_code,
+                "latency_ms": latency_ms,
+                "models": [],
+            }
+        return {
+            "ok": True,
+            "message": f"已加载 {len(models)} 个模型",
+            "endpoint": endpoint,
+            "http_status": response.status_code,
+            "latency_ms": latency_ms,
+            "models": models,
+        }
+    except Exception as exc:
+        return {
+            "ok": False,
+            "error": "request_failed",
+            "message": f"模型列表请求失败：{exc}",
+            "endpoint": endpoint,
+            "models": [],
+        }

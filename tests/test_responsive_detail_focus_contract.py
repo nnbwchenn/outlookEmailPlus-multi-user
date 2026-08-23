@@ -51,7 +51,7 @@ class ResponsiveDetailFocusContractTests(unittest.TestCase):
         self.assertIn('id="emailDetailSection"', html)
         section = re.search(r'id="emailDetailSection"[^>]*>', html)
         self.assertIsNotNone(section)
-        self.assertIn("display:none", section.group(0))
+        self.assertRegex(section.group(0).replace("\\n", " ").replace(" ", ""), r"display:none")
 
     def test_email_list_panel_exists(self):
         """emailListPanel 应存在于 mailbox workspace 中"""
@@ -119,7 +119,9 @@ class ResponsiveDetailFocusContractTests(unittest.TestCase):
         from pathlib import Path
 
         css = Path("static/css/main.css").read_text(encoding="utf-8")
-        self.assertIn(".btn-toggle-groups { display: none; }", css)
+        # 格式化后规则可能多行：弹性匹配
+        m2 = re.search(r"\.btn-toggle-groups\s*\{[^}]*display:\s*none", css)
+        self.assertTrue(m2, "桌面端应隐藏 btn-toggle-groups")
 
     # ==================== i18n 翻译词条测试 ====================
 
@@ -228,7 +230,8 @@ class ResponsiveThreeTierContractTests(unittest.TestCase):
         from pathlib import Path
 
         css = Path("static/css/main.css").read_text(encoding="utf-8")
-        self.assertIn(".mobile-back-btn { display: none; }", css)
+        m3 = re.search(r"\.mobile-back-btn\s*\{[^}]*display:\s*none", css)
+        self.assertTrue(m3, "mobile-back-btn 应全局默认隐藏")
 
     # ==================== CSS 下钻规则契约 ====================
 

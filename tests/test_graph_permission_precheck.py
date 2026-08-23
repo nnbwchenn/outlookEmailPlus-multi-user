@@ -80,7 +80,12 @@ class TestGraphPermissionPrecheck(unittest.TestCase):
     # get_access_token_graph_result 返回 scope 字段
     # ------------------------------------------------------------------
 
-    @patch("outlook_web.services.graph.requests.post")
+    def setUp(self):
+        from outlook_web.services import graph as graph_module
+
+        graph_module._TOKEN_CACHE.clear()
+
+    @patch("outlook_web.services.graph._GRAPH_SESSION.post")
     def test_token_result_includes_scope(self, mock_post):
         """token 结果应包含 scope 字段"""
         from outlook_web.services.graph import get_access_token_graph_result
@@ -91,7 +96,7 @@ class TestGraphPermissionPrecheck(unittest.TestCase):
         self.assertTrue(result.get("success"))
         self.assertEqual(result.get("scope"), "User.Read Mail.Read profile")
 
-    @patch("outlook_web.services.graph.requests.post")
+    @patch("outlook_web.services.graph._GRAPH_SESSION.post")
     def test_token_refresh_failure_returns_auth_expired(self, mock_post):
         """G-05: token 刷新失败 → 正常返回错误，不检查 scope"""
         from outlook_web.services.graph import get_access_token_graph_result
@@ -106,8 +111,8 @@ class TestGraphPermissionPrecheck(unittest.TestCase):
     # get_emails_graph 跳过无权限调用
     # ------------------------------------------------------------------
 
-    @patch("outlook_web.services.graph.requests.get")
-    @patch("outlook_web.services.graph.requests.post")
+    @patch("outlook_web.services.graph._GRAPH_SESSION.get")
+    @patch("outlook_web.services.graph._GRAPH_SESSION.post")
     def test_get_emails_graph_skips_api_when_no_permission(self, mock_post, mock_get):
         """无 Mail.Read 权限时不发起 Graph messages API 请求"""
         from outlook_web.services.graph import get_emails_graph
@@ -121,8 +126,8 @@ class TestGraphPermissionPrecheck(unittest.TestCase):
         # Graph messages API 不应被调用
         mock_get.assert_not_called()
 
-    @patch("outlook_web.services.graph.requests.get")
-    @patch("outlook_web.services.graph.requests.post")
+    @patch("outlook_web.services.graph._GRAPH_SESSION.get")
+    @patch("outlook_web.services.graph._GRAPH_SESSION.post")
     def test_get_emails_graph_calls_api_when_has_permission(self, mock_post, mock_get):
         """有 Mail.Read 权限时正常调用 Graph API"""
         from outlook_web.services.graph import get_emails_graph

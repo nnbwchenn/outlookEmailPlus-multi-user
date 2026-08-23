@@ -29,7 +29,7 @@
         <div id="statusMessage" class="token-status hidden" role="alert"></div>
 
         <!-- ===== OAuth 配置（两种方式共用） ===== -->
-        <section class="token-card">
+        <section class="token-card" id="oauthConfigCard">
             <div class="token-card-title"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="emoji-svg"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>OAuth 配置</div>
             <div class="token-form-grid">
                 <label class="token-field">
@@ -250,39 +250,6 @@
                     <textarea id="accessTokenResult" class="form-input token-textarea" readonly></textarea>
                     <button type="button" class="btn-inline" onclick="copyResultField('accessTokenResult')">复制</button>
                 </div>
-                <div class="result-item">
-                    <label>Client ID</label>
-                    <input id="clientIdResult" class="form-input" type="text" readonly>
-                    <button type="button" class="btn-inline" onclick="copyResultField('clientIdResult')">复制</button>
-                </div>
-                <div class="result-item">
-                    <label>Redirect URI</label>
-                    <input id="redirectUriResult" class="form-input" type="text" readonly>
-                    <button type="button" class="btn-inline" onclick="copyResultField('redirectUriResult')">复制</button>
-                </div>
-                <div class="result-item">
-                    <label>Requested Scope</label>
-                    <textarea id="requestedScopeResult" class="form-input token-textarea token-textarea-small" readonly></textarea>
-                </div>
-                <div class="result-item">
-                    <label>Granted Scope</label>
-                    <textarea id="grantedScopeResult" class="form-input token-textarea token-textarea-small" readonly></textarea>
-                </div>
-                <div class="result-item">
-                    <label>Audience</label>
-                    <input id="audienceResult" class="form-input" type="text" readonly>
-                </div>
-                <div class="result-item">
-                    <label>Scope Claim</label>
-                    <input id="scopeClaimResult" class="form-input" type="text" readonly>
-                </div>
-                <div class="result-item">
-                    <label>Roles Claim</label>
-                    <input id="rolesClaimResult" class="form-input" type="text" readonly>
-                </div>
-                <div class="result-item">
-                    <label>Expires In</label>
-                    <input id="expiresInResult" class="form-input" type="text" readonly>
                 </div>
             </div>
             <div class="token-button-row">

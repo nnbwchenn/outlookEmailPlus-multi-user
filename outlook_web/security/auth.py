@@ -218,6 +218,36 @@ def login_required(f):
     return decorated_function
 
 
+def _coerce_int(value, default: int) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
+# 成员对外 API 限流（内存滑动窗口，按 key_id 计数；单进程部署）
+_MEMBER_EXTERNAL_RATE_BUCKETS: dict[int, deque] = {}
+_MEMBER_RATE_WINDOW_SECONDS = 60
+
+
+def _check_member_external_rate_limit(key_id: int, limit_per_minute: int) -> float | None:
+    """检查成员 Key 是否超出管理员设置的每分钟限流。
+
+    返回 None 表示放行；否则返回建议重试秒数。
+    """
+    from collections import deque
+
+    now = time.monotonic()
+    bucket = _MEMBER_EXTERNAL_RATE_BUCKETS.setdefault(int(key_id), deque())
+    while bucket and now - bucket[0] >= _MEMBER_RATE_WINDOW_SECONDS:
+        bucket.popleft()
+    if len(bucket) >= max(1, int(limit_per_minute)):
+        retry_after = _MEMBER_RATE_WINDOW_SECONDS - (now - bucket[0])
+        return max(1.0, round(retry_after, 1))
+    bucket.append(now)
+    return None
+
+
 def api_key_required(f):
     """
     对外开放 API 的 API Key 校验装饰器。
@@ -279,7 +309,56 @@ def api_key_required(f):
             )
 
         if matched_consumer:
-            external_api_keys_repo.mark_external_api_key_used(int(matched_consumer["id"]))
+            # API Key 生命周期：已过期的 Key 一律拒绝（上游 v2.9.x）
+            if matched_consumer.get("expired"):
+                return (
+                    jsonify(
+                        {
+                            "success": False,
+                            "code": "API_KEY_EXPIRED",
+                            "message": "API Key 已过期，请联系管理员续期",
+                            "data": None,
+                        }
+                    ),
+                    403,
+                )
+
+            # 成员级 Key：校验管理员设置的用户级开关与限流（全局 Key owner_user_id 为 NULL，不受限）
+            owner_id = matched_consumer.get("owner_user_id")
+            if owner_id is not None:
+                from outlook_web.repositories import users as users_repo
+
+                owner = users_repo.get_user_by_id(_coerce_int(owner_id, 0))
+                if not owner or not owner.get("external_api_enabled"):
+                    return (
+                        jsonify(
+                            {
+                                "success": False,
+                                "code": "MEMBER_EXTERNAL_API_DISABLED",
+                                "message": "该用户的对外 API 功能未开通，请联系管理员",
+                                "data": None,
+                            }
+                        ),
+                        403,
+                    )
+                retry_after = _check_member_external_rate_limit(
+                    _coerce_int(matched_consumer["id"], 0), _coerce_int(owner.get("external_api_rate_limit"), 60)
+                )
+                if retry_after is not None:
+                    return (
+                        jsonify(
+                            {
+                                "success": False,
+                                "code": "RATE_LIMITED",
+                                "message": f"请求过于频繁，请 {retry_after} 秒后重试",
+                                "data": None,
+                            }
+                        ),
+                        429,
+                        {"Retry-After": str(retry_after)},
+                    )
+
+            external_api_keys_repo.mark_external_api_key_used(_coerce_int(matched_consumer["id"], 0))
             g.external_api_consumer = {
                 "id": matched_consumer["id"],
                 "consumer_key": matched_consumer.get("consumer_key") or f"key:{matched_consumer['id']}",
@@ -288,6 +367,7 @@ def api_key_required(f):
                 "allowed_emails": matched_consumer.get("allowed_emails") or [],
                 "pool_access": bool(matched_consumer.get("pool_access", False)),
                 "enabled": bool(matched_consumer.get("enabled", True)),
+                "expires_at": matched_consumer.get("expires_at") or "",
                 "is_legacy": False,
             }
             return f(*args, **kwargs)

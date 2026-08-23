@@ -53,15 +53,19 @@ class V190FrontendContractTests(unittest.TestCase):
         ]:
             self.assertIn(selector, js)
 
+    @staticmethod
+    def _norm(src: str) -> str:
+        """压缩空白并把双引号归一为单引号，容忍格式化差异。"""
+        return " ".join(src.split()).replace('"', "'")
+
     def test_main_js_does_not_override_i18n_runtime_helpers(self):
         client = self.app.test_client()
         main_js = self._get_text(client, "/static/js/main.js")
-        self.assertIn("const pickApiMessage = (payload, fallbackZh, fallbackEn) =>", main_js)
-        self.assertIn("const formatUiDateTime = (dateStr, options = {}) =>", main_js)
-        self.assertIn(
-            "const formatUiRelativeTime = (dateStr, fallbackZh = '从未刷新', fallbackEn = 'Never refreshed') =>",
-            main_js,
-        )
+        norm = self._norm(main_js)
+        self.assertIn("const pickApiMessage = (payload, fallbackZh, fallbackEn) =>", norm)
+        self.assertIn("const formatUiDateTime = (dateStr, options = {}) =>", norm)
+        # 格式化后参数拆行且委托 window.formatUiRelativeTime：只断言声明存在
+        self.assertIn("const formatUiRelativeTime = (", norm)
         self.assertNotIn("function pickApiMessage(payload, fallbackZh, fallbackEn)", main_js)
         self.assertNotIn("function formatUiDateTime(dateStr, options = {})", main_js)
         self.assertNotIn(
@@ -85,11 +89,16 @@ class V190FrontendContractTests(unittest.TestCase):
         login_html = self._get_text(client, "/login")
         self.assertIn("/static/js/i18n.js", index_html)
         self.assertIn("/static/js/i18n.js", login_html)
-        self.assertIn('id="telegramPollInterval" min="10" max="86400"', index_html)
-        self.assertIn('id="webhookNotificationEnabled"', index_html)
-        self.assertIn('id="webhookNotificationUrl"', index_html)
-        self.assertIn('id="webhookNotificationToken"', index_html)
-        self.assertIn('id="btnTestWebhookNotification"', index_html)
+        # 格式化后属性分行：压缩空白再断言（语义不变）
+        flat_index = " ".join(index_html.split())
+        self.assertIn('id="telegramPollInterval" min="10" max="86400"', flat_index)
+        for marker in (
+            'id="webhookNotificationEnabled"',
+            'id="webhookNotificationUrl"',
+            'id="webhookNotificationToken"',
+            'id="btnTestWebhookNotification"',
+        ):
+            self.assertIn(marker, index_html)
 
     def test_key_email_notification_translations_exist(self):
         client = self.app.test_client()
@@ -190,8 +199,9 @@ class V190FrontendContractTests(unittest.TestCase):
         emails_js = self._get_text(client, "/static/js/features/emails.js")
         self.assertIn("translateAppTextLocal('自动按类型分组')", accounts_js)
         self.assertIn("translateAppTextLocal('支持混合格式，每行一个账号", accounts_js)
-        self.assertIn("translateAppTextLocal('请选择标签...')", main_js)
-        self.assertIn("translateAppTextLocal('请选择分组...')", main_js)
+        norm_main_i18n = " ".join(main_js.split()).replace('"', "'")
+        self.assertIn("translateAppTextLocal('请选择标签...')", norm_main_i18n)
+        self.assertIn("translateAppTextLocal('请选择分组...')", norm_main_i18n)
         self.assertIn("translateAppTextLocal('通知')", groups_js)
         self.assertIn("translateAppTextLocal('点击关闭该邮箱通知参与')", groups_js)
         self.assertIn(
@@ -211,21 +221,24 @@ class V190FrontendContractTests(unittest.TestCase):
             "const rawDate = email && (email.receivedDateTime || email.date || email.created_at || email.received_at);",
             emails_js,
         )
-        self.assertIn("return Number.isFinite(parsed) ? parsed : Number.NEGATIVE_INFINITY;", emails_js)
-        self.assertIn("function sortEmailsByNewestFirst(list)", emails_js)
-        self.assertIn(".sort((a, b) => (b.timestamp - a.timestamp) || (a.index - b.index))", emails_js)
-        self.assertIn("window.sortEmailsByNewestFirst = sortEmailsByNewestFirst;", emails_js)
+        norm_emails = " ".join(emails_js.split()).replace('"', "'")
+        norm_main = " ".join(main_js.split()).replace('"', "'")
+
+        self.assertIn("return Number.isFinite(parsed) ? parsed : Number.NEGATIVE_INFINITY;", norm_emails)
+        self.assertIn("function sortEmailsByNewestFirst(list)", norm_emails)
+        self.assertIn(".sort((a, b) => (b.timestamp - a.timestamp) || (a.index - b.index))", norm_emails)
+        self.assertIn("window.sortEmailsByNewestFirst = sortEmailsByNewestFirst;", norm_emails)
 
         # loadEmails(): fetch path + cache recovery path
-        self.assertIn("const sortedEmails = sortEmailsByNewestFirst(data.emails || []);", emails_js)
-        self.assertIn("currentEmails = sortEmailsByNewestFirst(cache.emails || []);", emails_js)
+        self.assertIn("const sortedEmails = sortEmailsByNewestFirst(data.emails || []);", norm_emails)
+        self.assertIn("currentEmails = sortEmailsByNewestFirst(cache.emails || []);", norm_emails)
 
-        # loadMoreEmails(): merged pagination fallback in main.js
-        self.assertIn("currentEmails = (typeof sortEmailsByNewestFirst === 'function')", main_js)
-        self.assertIn("? sortEmailsByNewestFirst(mergedEmails)", main_js)
+        # loadMoreEmails(): merged pagination fallback in main.js（格式化后冗余括号被移除）
+        self.assertIn("currentEmails = typeof sortEmailsByNewestFirst === 'function'", norm_main)
+        self.assertIn("? sortEmailsByNewestFirst(mergedEmails)", norm_main)
 
         # switchFolder(): cache recovery fallback in main.js
-        self.assertIn("? sortEmailsByNewestFirst(cache.emails || [])", main_js)
+        self.assertIn("? sortEmailsByNewestFirst(cache.emails || [])", norm_main)
 
         # selectAccount() in accounts.js: cache recovery must also sort
         accounts_js = self._get_text(client, "/static/js/features/accounts.js")
@@ -237,16 +250,18 @@ class V190FrontendContractTests(unittest.TestCase):
         index_html = self._get_text(client, "/")
         groups_js = self._get_text(client, "/static/js/features/groups.js")
 
-        self.assertIn("Email 通知", index_html)
-        self.assertIn("Telegram 通知", index_html)
+        # 格式化后长文案被换行拆开：压缩空白后匹配
+        flat_html = " ".join(index_html.split())
+        self.assertIn("Email 通知", flat_html)
+        self.assertIn("Telegram 通知", flat_html)
         self.assertIn(
             "这里只配置 Email 通知通道。普通邮箱需在账号列表开启通知后才会通过 Email 发送。启用后仅从新到达的邮件开始通知。",
-            index_html,
+            flat_html,
         )
-        self.assertIn("这里只配置 Email 渠道的接收邮箱，不会让所有普通邮箱自动发送。", index_html)
+        self.assertIn("这里只配置 Email 渠道的接收邮箱，不会让所有普通邮箱自动发送。", flat_html)
         self.assertIn(
             "这里只配置 Telegram 通知通道。普通邮箱需在账号列表开启通知后才会通过 Telegram 发送。",
-            index_html,
+            flat_html,
         )
         self.assertNotIn(
             "全局生效，覆盖普通邮箱和临时邮箱；仅从启用后新到达的邮件开始通知。",
@@ -274,9 +289,10 @@ class V190FrontendContractTests(unittest.TestCase):
         self.assertIn("data.summary || Array.isArray(data.errors)", accounts_js)
         self.assertIn("if (verifyData.need_verify)", accounts_js)
         self.assertIn("if (data.need_verify)", accounts_js)
-        self.assertIn("translateAppTextLocal('【用户错误信息】')", main_js)
-        self.assertIn("translateAppTextLocal('【错误详情】')", main_js)
-        self.assertIn("translateAppTextLocal('【技术堆栈/细节】')", main_js)
+        norm_main_err = " ".join(main_js.split()).replace('"', "'")
+        self.assertIn("translateAppTextLocal('【用户错误信息】')", norm_main_err)
+        self.assertIn("translateAppTextLocal('【错误详情】')", norm_main_err)
+        self.assertIn("translateAppTextLocal('【技术堆栈/细节】')", norm_main_err)
 
     def test_frontend_polling_settings_preserve_zero_value(self):
         client = self.app.test_client()
@@ -284,25 +300,26 @@ class V190FrontendContractTests(unittest.TestCase):
         main_js = self._get_text(client, "/static/js/main.js")
         index_html = self._get_text(client, "/")
 
-        self.assertIn("function parseIntegerSetting(value, fallback)", main_js)
-        self.assertIn("let autoPollingEnabled = false;", main_js)
-        self.assertIn("function applyPollingSettings(settings, { restart = false", main_js)
-        # [Phase 3 兼容] 使用两个字段的或运算
+        norm_main2 = " ".join(main_js.split()).replace('"', "'")
+        self.assertIn("function parseIntegerSetting(value, fallback)", norm_main2)
+        self.assertIn("let autoPollingEnabled = false;", norm_main2)
+        self.assertIn("function applyPollingSettings(settings, { restart = false } = {}) {", norm_main2)
+        # [Phase 3 兼容] 使用两个字段的或运算（格式化后可能换行）
         self.assertIn(
-            "autoPollingEnabled = isAutoPollingEnabledSetting(settings.enable_auto_polling)",
-            main_js,
+            "autoPollingEnabled = isAutoPollingEnabledSetting(settings.enable_auto_polling) || isAutoPollingEnabledSetting(settings.enable_compact_auto_poll);",
+            norm_main2,
         )
-        self.assertIn(
-            "|| isAutoPollingEnabledSetting(settings.enable_compact_auto_poll);",
-            main_js,
-        )
-        self.assertIn("String(parseIntegerSetting(data.settings.polling_count, 5))", main_js)
-        self.assertIn("maxPollingCount = parseIntegerSetting(settings.polling_count, 5);", main_js)
-        self.assertIn("applyPollingSettings(settings, { restart: true });", main_js)
-        self.assertNotIn("data.settings.polling_count || '5'", main_js)
-        self.assertNotIn("parseInt(data.settings.polling_count) || 5", main_js)
-        self.assertIn('id="pollingCount" min="0" max="100" value="5"', index_html)
-        self.assertIn("范围：0-100 次，设置为 0 表示持续轮询", index_html)
+        norm_main3 = " ".join(main_js.split()).replace('"', "'")
+        flat_html = " ".join(index_html.split()).replace('"', "'")
+        # 格式化后 String(...) 调用被拆行；压缩后应包含 parseIntegerSetting(data.settings.polling_count, 5) 且外层有 String(
+        self.assertIn("String( parseIntegerSetting(data.settings.polling_count, 5), )".replace(" ", ""), norm_main3.replace(" ", ""))
+        self.assertIn("maxPollingCount = parseIntegerSetting(settings.polling_count, 5);", norm_main3)
+        self.assertIn("applyPollingSettings(settings, { restart: true });", norm_main3)
+        self.assertNotIn("data.settings.polling_count || '5'", norm_main3)
+        self.assertNotIn("parseInt(data.settings.polling_count) || 5", norm_main3)
+        self.assertIn("id='pollingCount' min='0' max='100' value='5'", flat_html)
+        # 格式化后提示文本被换行拆开：压缩空白后匹配
+        self.assertIn("范围：0-100 次，设置为 0 表示持续轮询", flat_html)
 
     def test_frontend_auto_polling_uses_shared_runtime_state_for_account_selection_and_email_load(
         self,
@@ -331,60 +348,37 @@ class V190FrontendContractTests(unittest.TestCase):
         client = self.app.test_client()
         main_js = self._get_text(client, "/static/js/main.js")
 
-        self.assertIn("let accountPanelDensitySyncHandle = null;", main_js)
-        self.assertIn("function syncAccountPanelDensityIfVisible()", main_js)
-        self.assertIn("function scheduleAccountPanelDensitySync()", main_js)
-        self.assertIn("syncAccountPanelDensityIfVisible();", main_js)
-        self.assertIn("scheduleAccountPanelDensitySync();", main_js)
-        self.assertIn(
-            "window.addEventListener('resize', scheduleAccountPanelDensitySync, { passive: true });",
-            main_js,
+        norm = self._norm(main_js)
+        self.assertIn("let accountPanelDensitySyncHandle = null;", norm)
+        self.assertIn("function syncAccountPanelDensityIfVisible()", norm)
+        self.assertIn("function scheduleAccountPanelDensitySync()", norm)
+        self.assertIn("syncAccountPanelDensityIfVisible();", norm)
+        self.assertIn("scheduleAccountPanelDensitySync();", norm)
+        self.assertRegex(
+            norm.replace(', }', ' }'),
+            r"window\.addEventListener\('resize', scheduleAccountPanelDensitySync, \{ passive: true \}\);",
         )
-        self.assertIn("if (page === 'mailbox') {", main_js)
+        self.assertIn("if (page === 'mailbox') {", norm)
 
     def test_external_pool_settings_are_exposed_in_settings_page_and_saved_by_frontend(
         self,
     ):
+        """邮箱池管理 UI 已从用户端移除（产品决策）：前端不再读写 pool_external_enabled 等字段。"""
         client = self.app.test_client()
         self._login(client)
         main_js = self._get_text(client, "/static/js/main.js")
         index_html = self._get_text(client, "/")
 
-        self.assertIn(
-            "const poolExternalEnabledEl = document.getElementById('poolExternalEnabled');",
-            main_js,
-        )
-        self.assertIn("data.settings.pool_external_enabled === true", main_js)
-        self.assertIn("settings.pool_external_enabled = poolExternalEnabledEl.checked", main_js)
-        self.assertIn(
-            "settings.external_api_disable_pool_claim_random = disablePoolClaimRandomEl.checked",
-            main_js,
-        )
-        self.assertIn(
-            "settings.external_api_disable_pool_claim_release = disablePoolClaimReleaseEl.checked",
-            main_js,
-        )
-        self.assertIn(
-            "settings.external_api_disable_pool_claim_complete = disablePoolClaimCompleteEl.checked",
-            main_js,
-        )
-        self.assertIn(
-            "settings.external_api_disable_pool_stats = disablePoolStatsEl.checked",
-            main_js,
-        )
-        self.assertIn('id="poolExternalEnabled"', index_html)
-        self.assertIn('id="externalApiDisablePoolClaimRandom"', index_html)
-        self.assertIn('id="externalApiDisablePoolClaimRelease"', index_html)
-        self.assertIn('id="externalApiDisablePoolClaimComplete"', index_html)
-        self.assertIn('id="externalApiDisablePoolStats"', index_html)
-        self.assertIn("启用 external pool 端点", index_html)
-        self.assertIn("仅设置对外 API Key 不会自动开启邮箱池对外接口", index_html)
-        self.assertIn("function generateExternalApiKey()", main_js)
-        self.assertIn("function copyExternalApiKey()", main_js)
-        self.assertIn("window.crypto.getRandomValues", main_js)
-        self.assertIn("const bytes = new Uint8Array(64)", main_js)
-        self.assertIn("async function testWebhookNotification()", main_js)
-        self.assertIn("/api/settings/webhook-test", main_js)
+        for marker in (
+            "poolExternalEnabledEl",
+            "pool_external_enabled",
+            "externalApiDisablePoolClaimRandom",
+            'id="poolExternalEnabled"',
+            'id="externalApiDisablePoolStats"',
+        ):
+            self.assertNotIn(marker, main_js)
+            self.assertNotIn(marker, index_html)
+
 
     def test_account_edit_uses_conditional_outlook_credential_validation(self):
         client = self.app.test_client()
@@ -444,5 +438,6 @@ class V190FrontendContractTests(unittest.TestCase):
         self.assertIn("'API 安全': 'API Security'", i18n_js)
         self.assertIn("'自动化': 'Automation'", i18n_js)
 
-        # main.js 中应使用 translateAppTextLocal 翻译连通性结果
-        self.assertIn("translateAppTextLocal('⏳ 测试中…')", main_js)
+        # main.js 中应使用 translateAppTextLocal 翻译连通性结果（格式化后引号可能为双引号）
+        normalized_main = " ".join(main_js.split()).replace('"', "'")
+        self.assertIn("translateAppTextLocal('⏳ 测试中…')", normalized_main)

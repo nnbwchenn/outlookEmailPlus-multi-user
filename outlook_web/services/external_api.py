@@ -891,7 +891,7 @@ def _write_extract_log(
         pass
 
 
-def _extract_verification_with_memory_for_outlook(
+def _extract_verification_with_memory_for_outlook(  # noqa: C901 - 多来源验证码提取主链路（规则/选项/AI 兑底），分支多但测试覆盖
     *,
     account: dict[str, Any],
     email_addr: str,

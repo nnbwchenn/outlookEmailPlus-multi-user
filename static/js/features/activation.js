@@ -37,42 +37,19 @@ function _acCopyText(text, btn) {
     }
 }
 
-// ---------- 用户端：兑换弹窗 ----------
-function showRedeemModal() {
-    closeRedeemModal();
-    const modal = document.createElement("div");
-    modal.className = "modal-overlay show";
-    modal.id = "acRedeemModal";
-    modal.innerHTML = `
-        <div class="modal-content" style="max-width:420px;">
-            <div class="modal-header">
-                <h3>使用激活码</h3>
-                <button class="modal-close" onclick="closeRedeemModal()">&times;</button>
-            </div>
-            <div class="modal-body" style="padding:1rem 1.25rem;display:flex;flex-direction:column;gap:12px;">
-                <div class="form-group" style="margin:0;">
-                    <label class="form-label">激活码</label>
-                    <input type="text" class="form-input" id="acRedeemInput"
-                           placeholder="例如：A3B4-C5D6-E7F8"
-                           autocomplete="off" spellcheck="false"
-                           style="text-transform:uppercase;font-family:var(--font-mono, monospace);letter-spacing:1px;">
-                    <div class="form-hint">激活后会将未分配的邮箱绑定到你的账号（数量由激活码决定）</div>
-                </div>
-                <div id="acRedeemStatus" class="token-status hidden"></div>
-                <div id="acRedeemResult" style="display:none;"></div>
-            </div>
-            <div class="modal-footer" style="display:flex;justify-content:flex-end;gap:8px;padding:0.75rem 1.25rem;border-top:1px solid var(--border-light);">
-                <button class="btn btn-sm" onclick="closeRedeemModal()">关闭</button>
-                <button class="btn btn-sm btn-primary" id="acRedeemBtn" onclick="acRedeemSubmit()">立即激活</button>
-            </div>
-        </div>
-    `;
-    document.body.appendChild(modal);
-    setTimeout(() => document.getElementById("acRedeemInput")?.focus(), 50);
-}
-
-function closeRedeemModal() {
-    document.getElementById("acRedeemModal")?.remove();
+// ---------- 页面渲染：按角色切换管理/兑换视图 ----------
+function renderActivationPage() {
+    const isAdmin = typeof isAdminUser === "function" && isAdminUser();
+    const adminView = document.getElementById("acAdminView");
+    const memberView = document.getElementById("acMemberView");
+    if (!adminView || !memberView) return;
+    adminView.style.display = isAdmin ? "" : "none";
+    memberView.style.display = isAdmin ? "none" : "";
+    if (isAdmin) {
+        acLoadCodes();
+    } else {
+        _acLoadMyBindings();
+    }
 }
 
 function _acSetStatus(text, kind) {
@@ -108,15 +85,23 @@ async function acRedeemSubmit() {
         const data = await res.json();
         if (data.success) {
             _acSetStatus(data.message || "激活成功", "success");
-            const rows = (data.bound || [])
-                .map(
-                    (b) =>
-                        `<li style="font-family:var(--font-mono, monospace);font-size:0.78rem;">${_acEsc(b.email)}</li>`,
-                )
-                .join("");
-            resultEl.innerHTML = `<div style="margin-top:4px;font-size:0.8rem;color:var(--text-secondary);">已绑定的邮箱：</div><ul style="margin:4px 0 0 1.2rem;padding:0;">${rows}</ul>`;
+            const box = document.createElement("div");
+            box.style.cssText =
+                "margin-top:4px;font-size:0.8rem;color:var(--text-secondary);";
+            box.textContent = "已绑定的邮箱：";
+            const ul = document.createElement("ul");
+            ul.style.cssText = "margin:4px 0 0 1.2rem;padding:0;";
+            for (const b of data.bound || []) {
+                const li = document.createElement("li");
+                li.style.cssText =
+                    "font-family:var(--font-mono, monospace);font-size:0.78rem;";
+                li.textContent = b.email; // textContent 天然防 XSS
+                ul.appendChild(li);
+            }
+            resultEl.replaceChildren(box, ul);
             resultEl.style.display = "block";
             input.value = "";
+            _acLoadMyBindings(); // 刷新已激活清单
             // 刷新邮箱列表与总览（新邮箱已归属当前用户）
             try {
                 if (
@@ -145,6 +130,27 @@ async function acRedeemSubmit() {
             btn.disabled = false;
             btn.textContent = "立即激活";
         }
+    }
+}
+
+async function _acLoadMyBindings() {
+    const listEl = document.getElementById("acMyBindingsList");
+    if (!listEl) return;
+    try {
+        const res = await fetch("/api/activation/my");
+        const data = await res.json();
+        const rows = data.bindings || [];
+        if (!rows.length) {
+            listEl.textContent = "还没有通过激活码绑定的邮箱";
+            return;
+        }
+        listEl.innerHTML = rows
+            .map((r) => `<div style="display:flex;justify-content:space-between;gap:8px;padding:2px 0;">` +
+                        `<span style="font-family:var(--font-mono, monospace);">${_acEsc(r.email)}</span>` +
+                        `<span style="color:var(--text-muted);white-space:nowrap;">${_acEsc(String(r.created_at || "").slice(0, 10))}</span></div>`)
+            .join("");
+    } catch (_e) {
+        listEl.textContent = "加载失败";
     }
 }
 
@@ -213,6 +219,15 @@ async function acLoadCodes() {
     const tbody = document.getElementById("acCodesBody");
     if (!tbody) return;
     tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;color:var(--text-muted);">加载中…</td></tr>`;
+    // 额度台账（不能超开：剩余可发名额与未分配邮箱一一对应）
+    try {
+        const sumRes = await fetch("/api/admin/activation-codes/summary");
+        const sum = await sumRes.json();
+        const info = document.getElementById("acQuotaInfo");
+        if (info && sum.success) {
+            info.textContent = `未分配邮箱 ${sum.available_mailboxes} · 未兑换码占额 ${sum.outstanding_quota} · 还可签发 ${sum.remaining_capacity}`;
+        }
+    } catch (_e) {}
     try {
         const res = await fetch("/api/admin/activation-codes");
         const data = await res.json();
@@ -221,6 +236,7 @@ async function acLoadCodes() {
             tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;color:var(--text-muted);">暂无激活码，先用上方表单生成</td></tr>`;
             return;
         }
+        // pi-lens-ignore: no-inner-html-js
         tbody.innerHTML = codes
             .map((c) => {
                 const statusBadge =

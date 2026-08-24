@@ -254,13 +254,7 @@
                 return `
                     <div class="mail-row ${isChecked ? 'is-selected' : ''}" data-email="${escapeHtml(account.email || '')}">
                         <div class="select-cell" data-label="${escapeHtml(translateCompactText('选择'))}">
-                            <input
-                                type="checkbox"
-                                class="account-select-checkbox"
-                                value="${account.id}"
-                                ${isChecked ? 'checked' : ''}
-                                onchange="syncCompactSelectionState(${account.id}, this.checked)"
-                            >
+                            ${isAdminUser() ? `<input type="checkbox" class="account-select-checkbox" value="${account.id}" ${isChecked ? "checked" : ""} onchange="syncCompactSelectionState(${account.id}, this.checked)">` : ""}
                         </div>
                         <div class="mail-card" data-label="${escapeHtml(translateCompactText('邮箱'))}">
                             <button

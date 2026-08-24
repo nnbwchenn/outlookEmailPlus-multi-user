@@ -19,6 +19,12 @@ class ActivationCodeContractTests(unittest.TestCase):
 
     def setUp(self):
         self.client = self.app.test_client()
+        # 每条用例独立额度状态：清空激活码与绑定记录（不动账号归属）
+        conn = sqlite3.connect(self.db_path)
+        conn.execute("DELETE FROM activation_code_bindings")
+        conn.execute("DELETE FROM activation_codes")
+        conn.commit()
+        conn.close()
         self._login("admin", "testpass123")
 
     def _login(self, username: str, password: str) -> None:
@@ -63,6 +69,7 @@ class ActivationCodeContractTests(unittest.TestCase):
             self.assertEqual(resp.status_code, 400, f"payload={payload}")
 
     def test_generate_and_list(self):
+        self._seed_accounts([f"gen-{i}@example.com" for i in range(6)])
         resp = self.client.post(
             "/api/admin/activation-codes/generate", json={"count": 3, "max_bindings": 2}
         )
@@ -81,6 +88,7 @@ class ActivationCodeContractTests(unittest.TestCase):
     # ---------- 用户端：兑换绑定 ----------
 
     def test_redeem_binds_unassigned_mailboxes(self):
+        self._seed_accounts([f"bind-{i}@example.com" for i in range(3)])
         before = self._unassigned_count()
         if before < 3:
             self.skipTest(f"未分配邮箱不足（{before}），跳过")
@@ -116,7 +124,7 @@ class ActivationCodeContractTests(unittest.TestCase):
 
     def test_redeem_rejects_duplicate_binding_via_constraint(self):
         """UNIQUE(code_id, account_id) 约束存在且生效"""
-        self._seed_accounts(["dedup-test@example.com"])
+        self._seed_accounts([f"dedup-{i}@example.com" for i in range(5)])
         gen = self.client.post(
             "/api/admin/activation-codes/generate", json={"count": 1, "max_bindings": 5}
         ).get_json()
@@ -135,6 +143,7 @@ class ActivationCodeContractTests(unittest.TestCase):
         conn.close()
 
     def test_redeem_rejects_disabled_code(self):
+        self._seed_accounts(["disabled-test@example.com"])
         gen = self.client.post(
             "/api/admin/activation-codes/generate", json={"count": 1, "max_bindings": 1}
         ).get_json()
@@ -160,27 +169,34 @@ class ActivationCodeContractTests(unittest.TestCase):
         self.assertEqual(resp.get_json()["error"]["code"], "ACTIVATION_CODE_INVALID")
 
     def test_redeem_empty_mailbox_pool(self):
-        """无未分配邮箱时 → NO_AVAILABLE_MAILBOX"""
-        # 先把所有账号分配掉
+        """无未分配邮箱时 → NO_AVAILABLE_MAILBOX（先签码、后占满）"""
+        self._seed_accounts([f"pool-{i}@example.com" for i in range(2)])
+        gen = self.client.post(
+            "/api/admin/activation-codes/generate", json={"count": 1, "max_bindings": 2}
+        )
+        self.assertEqual(gen.status_code, 200)
+        code = gen.get_json()["codes"][0]
+
+        # 占满全部未分配邮箱
         conn = sqlite3.connect(self.db_path)
         conn.execute("UPDATE accounts SET owner_user_id=1 WHERE owner_user_id IS NULL")
         conn.commit()
         conn.close()
 
         try:
-            gen = self.client.post(
-                "/api/admin/activation-codes/generate", json={"count": 1, "max_bindings": 5}
-            ).get_json()
-            resp = self.client.post("/api/activation/redeem", json={"code": gen["codes"][0]})
+            resp = self.client.post("/api/activation/redeem", json={"code": code})
             self.assertEqual(resp.status_code, 400)
             self.assertEqual(resp.get_json()["error"]["code"], "NO_AVAILABLE_MAILBOX")
         finally:
             conn = sqlite3.connect(self.db_path)
-            conn.execute("UPDATE accounts SET owner_user_id=NULL WHERE owner_user_id=1")
+            conn.execute(
+                "UPDATE accounts SET owner_user_id=NULL WHERE email LIKE 'pool-%@example.com'"
+            )
             conn.commit()
             conn.close()
 
     def test_my_activations_lists_bindings(self):
+        self._seed_accounts(["myact@example.com"])
         before = self._unassigned_count()
         if before < 1:
             self.skipTest("无未分配邮箱，跳过")
@@ -193,6 +209,42 @@ class ActivationCodeContractTests(unittest.TestCase):
         resp = self.client.get("/api/activation/my")
         self.assertEqual(resp.status_code, 200)
         self.assertGreaterEqual(len(resp.get_json()["bindings"]), 1)
+
+
+    def test_overissue_capacity_enforced(self):
+        """不能超开：签发总额度不得超过剩余可发名额（相对断言，不受其他用例影响）"""
+        summary = self.client.get("/api/admin/activation-codes/summary").get_json()
+        r = int(summary["remaining_capacity"])
+
+        # 超开一个名额：count=(r+1) × max=1 → 拒绝
+        over_count = min(r + 1, 200)
+        resp = self.client.post(
+            "/api/admin/activation-codes/generate", json={"count": over_count, "max_bindings": 1}
+        )
+        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(resp.get_json()["error"]["code"], "ACTIVATION_CAPACITY_EXCEEDED")
+
+        # 恰好用尽：count=r × max=1 → 允许（r=0 时跳过）
+        if r > 0:
+            ok = self.client.post(
+                "/api/admin/activation-codes/generate", json={"count": r, "max_bindings": 1}
+            )
+            self.assertEqual(ok.status_code, 200)
+
+        # 额度耗尽后：再签 1 个也拒绝
+        exhausted = self.client.post(
+            "/api/admin/activation-codes/generate", json={"count": 1, "max_bindings": 1}
+        )
+        self.assertEqual(exhausted.status_code, 400)
+        self.assertEqual(exhausted.get_json()["error"]["code"], "ACTIVATION_CAPACITY_EXCEEDED")
+
+    def test_summary_endpoint(self):
+        resp = self.client.get("/api/admin/activation-codes/summary")
+        self.assertEqual(resp.status_code, 200)
+        body = resp.get_json()
+        self.assertIn("available_mailboxes", body)
+        self.assertIn("outstanding_quota", body)
+        self.assertIn("remaining_capacity", body)
 
 
 if __name__ == "__main__":

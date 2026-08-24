@@ -281,7 +281,7 @@ async function showAssignAccountsModal(userId, username) {
             <div class="modal-body" style="padding:1rem 1.25rem;">
                 <div style="display:flex;gap:12px;margin-bottom:12px;">
                     <button class="btn btn-sm btn-primary" id="muTabAssigned" onclick="muSwitchAssignTab('assigned', ${userId})">已分配</button>
-                    <button class="btn btn-sm" id="muTabUnassigned" onclick="muSwitchAssignTab('unassigned', ${userId})">未分配（管理员全局）</button>
+                    <button class="btn btn-sm" id="muTabUnassigned" onclick="muSwitchAssignTab('unassigned', ${userId})">全部邮箱（标注归属）</button>
                 </div>
                 <div id="muAssignList" style="max-height:360px;overflow-y:auto;border:1px solid var(--border-light);border-radius:6px;">
                     <div class="loading-overlay"><span class="spinner"></span> 加载中…</div>
@@ -325,17 +325,27 @@ async function muSwitchAssignTab(mode, userId) {
         document.getElementById('muAssignCount').textContent = `共 ${accounts.length} 个邮箱`;
 
         if (accounts.length === 0) {
-            listEl.innerHTML = `<div class="empty-state"><p>${mode === 'assigned' ? '尚未分配邮箱' : '没有未分配邮箱（所有邮箱已归属用户）'}</p></div>`;
+            listEl.innerHTML = `<div class="empty-state"><p>${mode === 'assigned' ? '该用户名下暂无邮箱' : '系统中还没有任何邮箱'}</p></div>`;
             return;
         }
 
-        listEl.innerHTML = accounts.map(a => `
-            <label style="display:flex;align-items:center;gap:10px;padding:8px 12px;border-bottom:1px solid var(--border-light);cursor:pointer;">
+        listEl.innerHTML = accounts.map(a => {
+            const ownedByOther = a.owner_user_id && a.owner_user_id !== userId;
+            const ownedBySelf = a.owner_user_id && a.owner_user_id === userId;
+            const ownerChip = ownedByOther
+                ? `<span style="margin-left:auto;font-size:0.72rem;background:#b45309;color:#fff;border-radius:999px;padding:1px 8px;white-space:nowrap;">归属: ${muEscape(a.owner_username || '其他用户')}</span>`
+                : ownedBySelf
+                  ? `<span style="margin-left:auto;font-size:0.72rem;background:#8a8f98;color:#fff;border-radius:999px;padding:1px 8px;white-space:nowrap;">已归属本人</span>`
+                  : '';
+            const rowTint = ownedByOther ? 'background:rgba(180,83,9,0.06);' : '';
+            return `
+            <label style="display:flex;align-items:center;gap:10px;padding:8px 12px;border-bottom:1px solid var(--border-light);cursor:pointer;${rowTint}">
                 <input type="checkbox" class="mu-assign-check" value="${a.id}" onchange="muToggleAssign(${a.id}, this.checked)">
                 <span style="font-size:0.85rem;">${muEscape(a.email)}</span>
-                <span style="margin-left:auto;font-size:0.72rem;color:var(--text-muted);">${a.status === 'active' ? '正常' : '停用'}</span>
+                ${ownerChip}
+                <span style="${ownedByOther ? '' : 'margin-left:auto;'}font-size:0.72rem;color:var(--text-muted);">${a.status === 'active' ? '正常' : '停用'}</span>
             </label>
-        `).join('');
+        `;}).join('');
     } catch (error) {
         listEl.innerHTML = `<div class="empty-state"><p>加载失败</p></div>`;
     }

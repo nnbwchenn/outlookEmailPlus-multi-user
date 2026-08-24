@@ -1,4 +1,4 @@
-"""激活码仓储层（管理员批量生成 / 用户兑换绑定邮箱）"""
+"""激活码仓储层：管理员批量生成 / 用户兑换绑定邮箱（原子性靠 UNIQUE(code_id, account_id) 兑底）"""
 
 from __future__ import annotations
 
@@ -41,6 +41,32 @@ def create_codes(count: int, max_bindings: int, created_by: int | None, note: st
     return codes
 
 
+def get_activation_summary() -> dict[str, int]:
+    """激活码额度台账：可用邮箱数 / 未兑换码占用额度 / 还可签发额度。
+
+    规则：不能超开 —— 全部未兑换激活码的可绑总数不得超过当前未分配邮箱数。
+    """
+    conn = get_db()
+    conn.row_factory = sqlite3.Row
+    row = conn.execute(
+        """
+        SELECT
+            (SELECT COUNT(*) FROM accounts WHERE owner_user_id IS NULL) AS available_mailboxes,
+            COALESCE((
+                SELECT SUM(max_bindings) FROM activation_codes
+                WHERE status = 'active' AND redeemed_by IS NULL
+            ), 0) AS outstanding_quota
+        """
+    ).fetchone()
+    available = int(row["available_mailboxes"])
+    outstanding = int(row["outstanding_quota"])
+    return {
+        "available_mailboxes": available,
+        "outstanding_quota": outstanding,
+        "remaining_capacity": max(0, available - outstanding),
+    }
+
+
 def get_code_by_text(code: str) -> dict[str, Any] | None:
     conn = get_db()
     conn.row_factory = sqlite3.Row
@@ -69,19 +95,25 @@ def list_codes() -> list[dict[str, Any]]:
 def set_status(code_id: int, status: str) -> bool:
     if status not in ("active", "disabled"):
         return False
-    conn = get_db()
-    cur = conn.execute(
-        "UPDATE activation_codes SET status = ? WHERE id = ?", (status, int(code_id))
-    )
-    conn.commit()
-    return cur.rowcount > 0
+    try:
+        conn = get_db()
+        cur = conn.execute(
+            "UPDATE activation_codes SET status = ? WHERE id = ?", (status, int(code_id))
+        )
+        conn.commit()
+        return cur.rowcount > 0
+    except sqlite3.Error:
+        return False
 
 
 def delete_code(code_id: int) -> bool:
-    conn = get_db()
-    cur = conn.execute("DELETE FROM activation_codes WHERE id = ?", (int(code_id),))
-    conn.commit()
-    return cur.rowcount > 0
+    try:
+        conn = get_db()
+        cur = conn.execute("DELETE FROM activation_codes WHERE id = ?", (int(code_id),))
+        conn.commit()
+        return cur.rowcount > 0
+    except sqlite3.Error:
+        return False
 
 
 def redeem_code(code_row: dict[str, Any], user_id: int) -> dict[str, Any]:
@@ -156,17 +188,20 @@ def redeem_code(code_row: dict[str, Any], user_id: int) -> dict[str, Any]:
 
 def list_bindings_for_user(user_id: int) -> list[dict[str, Any]]:
     """用户已通过激活码绑定的邮箱（用于前端展示）。"""
-    conn = get_db()
-    conn.row_factory = sqlite3.Row
-    rows = conn.execute(
-        """
-        SELECT b.account_id, a.email, c.code, b.created_at
-        FROM activation_code_bindings b
-        JOIN accounts a ON a.id = b.account_id
-        JOIN activation_codes c ON c.id = b.code_id
-        WHERE b.user_id = ?
-        ORDER BY b.id DESC
-        """,
-        (int(user_id),),
-    ).fetchall()
-    return [dict(r) for r in rows]
+    try:
+        conn = get_db()
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute(
+            """
+            SELECT b.account_id, a.email, c.code, b.created_at
+            FROM activation_code_bindings b
+            JOIN accounts a ON a.id = b.account_id
+            JOIN activation_codes c ON c.id = b.code_id
+            WHERE b.user_id = ?
+            ORDER BY b.id DESC
+            """,
+            (int(user_id),),
+        ).fetchall()
+        return [dict(r) for r in rows]
+    except sqlite3.Error:
+        return []

@@ -2,7 +2,7 @@
 
 from flask import Blueprint
 
-import outlook_web.controllers.activation_codes as activation_codes_controller
+from outlook_web.controllers import activation_codes as activation_codes_controller
 
 bp = Blueprint("activation_codes", __name__, url_prefix="/api")
 
@@ -10,6 +10,11 @@ bp.add_url_rule(
     "/admin/activation-codes/generate",
     view_func=activation_codes_controller.api_generate_codes,
     methods=["POST"],
+)
+bp.add_url_rule(
+    "/admin/activation-codes/summary",
+    view_func=activation_codes_controller.api_activation_summary,
+    methods=["GET"],
 )
 bp.add_url_rule(
     "/admin/activation-codes",

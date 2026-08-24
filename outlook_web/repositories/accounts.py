@@ -105,6 +105,21 @@ def _hydrate_accounts(rows: list[sqlite3.Row], db: sqlite3.Connection) -> list[d
     return accounts
 
 
+def list_accounts_with_owner() -> list[dict]:
+    """分配选择器专用：全部账号 + 当前归属用户名（未分配为 NULL）。"""
+    db = get_db()
+    rows = db.execute(
+        """
+        SELECT a.id, a.email, a.status, a.group_id,
+               a.owner_user_id, u.username AS owner_username
+        FROM accounts a
+        LEFT JOIN users u ON u.id = a.owner_user_id
+        ORDER BY a.email ASC
+        """
+    ).fetchall()
+    return [dict(r) for r in rows]
+
+
 def load_accounts(group_id: int | None = None, owner_user_id: int | None = None) -> list[dict]:
     """从数据库加载邮箱账号（自动解密敏感字段，批量加载 tags 避免 N+1）
 

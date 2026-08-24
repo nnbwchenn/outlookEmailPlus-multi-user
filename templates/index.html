@@ -193,6 +193,28 @@
                                 /></svg></span
                         ><span>审计日志</span>
                     </button>
+
+                    <div class="nav-section">更多</div>
+                    <button
+                        class="nav-item"
+                        data-page="activation"
+                        onclick="navigate('activation')"
+                    >
+                        <span class="nav-icon"
+                            ><svg
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                stroke-width="2"
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                            >
+                                <path
+                                    d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"
+                                />
+                                <line x1="7" y1="7" x2="7.01" y2="7" /></svg></span
+                        ><span>激活码</span>
+                    </button>
                 </nav>
                 <button
                     class="nav-more-btn"
@@ -847,33 +869,11 @@
                                 class="batch-action-bar"
                                 style="display: none"
                             >
-                                <span
-                                    id="selectedCount"
-                                    style="
-                                        font-size: 0.78rem;
-                                        color: var(--text-muted);
-                                    "
-                                    >已选 0 项</span
+                                <span class="batch-count-badge"
+                                    >已选
+                                    <b id="selectedCount">0</b> 个账号</span
                                 >
                                 <div style="flex: 1"></div>
-                                <button
-                                    class="btn btn-sm btn-ghost"
-                                    onclick="showBatchTagModal('add')"
-                                >
-                                    打标签
-                                </button>
-                                <button
-                                    class="btn btn-sm btn-ghost"
-                                    onclick="showBatchTagModal('remove')"
-                                >
-                                    去标签
-                                </button>
-                                <button
-                                    class="btn btn-sm btn-ghost"
-                                    onclick="showBatchMoveGroupModal()"
-                                >
-                                    移动分组
-                                </button>
                                 <button
                                     class="btn btn-sm btn-ghost"
                                     onclick="showBatchFetchConfirm()"
@@ -892,25 +892,31 @@
                                 >
                                     关闭通知
                                 </button>
+                                <span class="bar-sep"></span>
                                 <button
-                                    class="btn btn-sm btn-primary"
+                                    class="btn btn-sm btn-ghost"
+                                    onclick="showBatchTagModal('add')"
+                                >
+                                    打标签
+                                </button>
+                                <button
+                                    class="btn btn-sm btn-ghost"
+                                    onclick="showBatchTagModal('remove')"
+                                >
+                                    去标签
+                                </button>
+                                <button
+                                    class="btn btn-sm btn-ghost"
+                                    onclick="showBatchMoveGroupModal()"
+                                >
+                                    移动分组
+                                </button>
+                                <span class="bar-sep"></span>
+                                <button
+                                    class="btn btn-sm btn-ghost"
                                     onclick="showBatchRefreshConfirm()"
                                 >
-                                    <svg
-                                        viewBox="0 0 24 24"
-                                        fill="none"
-                                        stroke="currentColor"
-                                        stroke-width="2"
-                                        stroke-linecap="round"
-                                        stroke-linejoin="round"
-                                        class="emoji-svg"
-                                    >
-                                        <polyline points="23 4 23 10 17 10" />
-                                        <polyline points="1 20 1 14 7 14" />
-                                        <path
-                                            d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"
-                                        /></svg
-                                    >刷新 Token
+                                    刷新 Token
                                 </button>
                                 <button
                                     class="btn btn-sm btn-danger"
@@ -1022,6 +1028,13 @@
                                         style="display: none"
                                         class="badge badge-gray"
                                     ></span>
+                                    <label class="email-select-all" id="emailSelectAllWrap">
+                                        <input
+                                            type="checkbox"
+                                            id="emailSelectAll"
+                                            onchange="toggleEmailSelectAll(this.checked)"
+                                        />全选
+                                    </label>
                                 </div>
                                 <div style="display: flex; gap: 4px">
                                     <button
@@ -1355,7 +1368,7 @@
                                 <span
                                     id="compactSelectedCount"
                                     class="batch-info"
-                                    >已选 0 项</span
+                                    >已选 <b>0</b> 项</span
                                 >
                                 <div class="batch-actions">
                                     <button
@@ -1469,13 +1482,6 @@
                                 onclick="switchSettingsTab('automation')"
                             >
                                 自动化
-                            </button>
-                            <button
-                                class="settings-tab"
-                                data-tab="activation"
-                                onclick="switchSettingsTab('activation'); acLoadCodes();"
-                            >
-                                激活码
                             </button>
                         </div>
 
@@ -2908,52 +2914,7 @@
                                 </div>
                             </div>
 
-                            <!-- Tab 4: 激活码 -->
-                            <div class="settings-tab-pane" id="settings-tab-activation">
-                                <!-- 一键生成 -->
-                                <div class="card" style="margin-bottom: 1rem;">
-                                    <div class="card-header">
-                                        <div class="card-title">生成激活码</div>
-                                    </div>
-                                    <div class="card-body">
-                                        <div style="display:flex; gap:12px; flex-wrap:wrap; align-items:flex-end;">
-                                            <div class="form-group" style="margin:0;">
-                                                <label class="form-label">生成数量（1-200）</label>
-                                                <input type="number" class="form-input" id="acGenCount" min="1" max="200" value="10" style="width:140px;" />
-                                            </div>
-                                            <div class="form-group" style="margin:0;">
-                                                <label class="form-label">每码可绑定邮箱数（1-100）</label>
-                                                <input type="number" class="form-input" id="acGenBindings" min="1" max="100" value="5" style="width:160px;" />
-                                            </div>
-                                            <button class="btn btn-primary" onclick="acGenerate()">一键生成</button>
-                                            <span id="acGenStatus" style="font-size:0.82rem;"></span>
-                                        </div>
-                                        <textarea id="acGenResult" readonly hidden style="margin-top:12px;width:100%;min-height:120px;font-family:var(--font-mono, monospace);font-size:0.8rem;"></textarea>
-                                        <div id="acGenCopyWrap" hidden style="margin-top:8px;">
-                                            <button class="btn btn-sm btn-ghost" id="acGenCopyBtn" onclick="acCopyGenerated()">复制全部激活码</button>
-                                        </div>
-                                    </div>
-                                </div>
-                                <!-- 列表 -->
-                                <div class="card">
-                                    <div class="card-header">
-                                        <div class="card-title">激活码列表</div>
-                                        <button class="btn btn-sm btn-ghost" onclick="acLoadCodes()">刷新</button>
-                                    </div>
-                                    <div class="card-body">
-                                        <div class="data-table-shell">
-                                            <table class="data-table">
-                                                <thead>
-                                                    <tr>
-                                                        <th>激活码</th><th>可绑邮箱数</th><th>已绑</th><th>状态</th><th>兑换用户</th><th>创建时间</th><th>操作</th>
-                                                    </tr>
-                                                </thead>
-                                                <tbody id="acCodesBody"></tbody>
-                                            </table>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
+                            
                         </div>
                     </div>
                     <!-- /settings-card-shell -->
@@ -3586,7 +3547,89 @@
                     <!-- /memberSettingsShell -->
 
                 <!-- ===== Page: Users（多用户管理，admin 专属） ===== -->
-                <div class="page page-hidden" id="page-users">
+                
+                <div class="page page-hidden" id="page-activation" style="padding: 1.5rem">
+                    <!-- 管理员视图：生成与管理 -->
+                    <div id="acAdminView" style="display:none;">
+                                <!-- 一键生成 -->
+                                <div class="card" style="margin-bottom: 1rem;">
+                                    <div class="card-header">
+                                        <div class="card-title">生成激活码</div>
+                                        <span id="acQuotaInfo" style="font-size:0.8rem;color:var(--text-muted);">额度加载中…</span>
+                                    </div>
+                                    <div class="card-body">
+                                        <div style="display:flex; gap:12px; flex-wrap:wrap; align-items:flex-end;">
+                                            <div class="form-group" style="margin:0;">
+                                                <label class="form-label">生成数量（1-200）</label>
+                                                <input type="number" class="form-input" id="acGenCount" min="1" max="200" value="10" style="width:140px;" />
+                                            </div>
+                                            <div class="form-group" style="margin:0;">
+                                                <label class="form-label">每码可绑定邮箱数（1-100）</label>
+                                                <input type="number" class="form-input" id="acGenBindings" min="1" max="100" value="5" style="width:160px;" />
+                                            </div>
+                                            <button class="btn btn-primary" onclick="acGenerate()">一键生成</button>
+                                            <span id="acGenStatus" style="font-size:0.82rem;"></span>
+                                        </div>
+                                        <textarea id="acGenResult" readonly hidden style="margin-top:12px;width:100%;min-height:120px;font-family:var(--font-mono, monospace);font-size:0.8rem;"></textarea>
+                                        <div id="acGenCopyWrap" hidden style="margin-top:8px;">
+                                            <button class="btn btn-sm btn-ghost" id="acGenCopyBtn" onclick="acCopyGenerated()">复制全部激活码</button>
+                                        </div>
+                                    </div>
+                                </div>
+                                <!-- 列表 -->
+                                <div class="card">
+                                    <div class="card-header">
+                                        <div class="card-title">激活码列表</div>
+                                        <button class="btn btn-sm btn-ghost" onclick="acLoadCodes()">刷新</button>
+                                    </div>
+                                    <div class="card-body">
+                                        <div class="data-table-shell">
+                                            <table class="data-table">
+                                                <thead>
+                                                    <tr>
+                                                        <th>激活码</th><th>可绑邮箱数</th><th>已绑</th><th>状态</th><th>兑换用户</th><th>创建时间</th><th>操作</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody id="acCodesBody"></tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                </div>
+                    </div>
+                    <!-- 成员视图：兑换与我的激活 -->
+                    <div id="acMemberView" style="display:none;">
+                        <div class="card" style="margin-bottom: 1rem;">
+                            <div class="card-header">
+                                <div class="card-title">兑换激活码</div>
+                            </div>
+                            <div class="card-body">
+                                <div style="display:flex; gap:12px; flex-wrap:wrap; align-items:flex-end;">
+                                    <div class="form-group" style="margin:0; flex:1; min-width:220px;">
+                                        <label class="form-label">激活码</label>
+                                        <input type="text" class="form-input" id="acRedeemInput"
+                                               placeholder="例如：A3B4-C5D6-E7F8" autocomplete="off" spellcheck="false"
+                                               style="text-transform:uppercase;font-family:var(--font-mono, monospace);letter-spacing:1px;" />
+                                    </div>
+                                    <button class="btn btn-primary" id="acRedeemBtn" onclick="acRedeemSubmit()">立即激活</button>
+                                </div>
+                                <div id="acRedeemStatus" class="token-status hidden" style="margin-top:10px;"></div>
+                                <div id="acRedeemResult" style="display:none; margin-top:8px;"></div>
+                                <div class="form-hint" style="margin-top:10px;">激活后会将未分配的邮箱绑定到你的账号（数量由激活码决定）</div>
+                            </div>
+                        </div>
+                        <div class="card">
+                            <div class="card-header">
+                                <div class="card-title">我已激活的邮箱</div>
+                                <button class="btn btn-sm btn-ghost" onclick="_acLoadMyBindings()">刷新</button>
+                            </div>
+                            <div class="card-body">
+                                <div id="acMyBindingsList" style="font-size:0.82rem;color:var(--text-secondary);">加载中…</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+<div class="page page-hidden" id="page-users">
                     <div class="card">
                         <div class="card-header">
                             <div class="card-title">

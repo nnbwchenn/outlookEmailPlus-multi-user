@@ -183,6 +183,7 @@
             if (options.scrollToTop !== false) container.scrollTop = 0;
 
             updateEmailBatchActionBar();
+            updateEmailSelectAllState();
         }
 
         function toggleEmailSelection(emailId) {
@@ -196,6 +197,25 @@
             // For simplicity, we just find the checkbox and update it
             // implementation below is cheap
             renderEmailList(currentEmails, { scrollToTop: false });
+        }
+
+        function toggleEmailSelectAll(checked) {
+            currentEmails.forEach((email) => {
+                if (checked) selectedEmailIds.add(email.id);
+                else selectedEmailIds.delete(email.id);
+            });
+            renderEmailList(currentEmails, { scrollToTop: false });
+        }
+
+        function updateEmailSelectAllState() {
+            const wrap = document.getElementById('emailSelectAllWrap');
+            const box = document.getElementById('emailSelectAll');
+            if (!wrap || !box) return;
+            const total = currentEmails.length;
+            const selectedInList = currentEmails.filter((e) => selectedEmailIds.has(e.id)).length;
+            wrap.style.display = total > 0 ? 'inline-flex' : 'none';
+            box.checked = total > 0 && selectedInList === total;
+            box.indeterminate = selectedInList > 0 && selectedInList < total;
         }
 
         function updateEmailBatchActionBar() {

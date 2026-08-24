@@ -294,10 +294,10 @@
                 <div class="account-card ${currentAccount === acc.email ? 'active' : ''}"
                      onclick="selectAccount('${escapeJs(acc.email)}')">
                     <div class="account-card-top">
-                        <input type="checkbox" class="account-select-checkbox" value="${acc.id}"
+                        ${isAdminUser() ? `<input type="checkbox" class="account-select-checkbox" value="${acc.id}"
                                ${isChecked ? 'checked' : ''}
                                onclick="event.stopPropagation()"
-                               onchange="event.stopPropagation(); handleAccountSelectionChange(${acc.id}, this.checked)">
+                               onchange="event.stopPropagation(); handleAccountSelectionChange(${acc.id}, this.checked)">` : ''}
                         <div class="account-info">
                             <div class="account-email-row">
                                 ${statusDot ? `${statusDot.replace('<span ', `<span title="${statusTitle}" `)}` : ''}

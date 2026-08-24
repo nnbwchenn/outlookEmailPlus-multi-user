@@ -231,29 +231,44 @@ def api_assign_accounts() -> Any:
     except (TypeError, ValueError):
         return _json_error("ACCOUNT_IDS_INVALID", "account_ids 必须是整数数组")
 
-    # 校验账号存在
+    # 校验账号存在；标记从其他用户转移的邮箱（用于前端醒目区分）
     assigned = 0
     missing = []
+    transferred = []
     for aid in parsed_ids:
         account = accounts_repo.get_account_by_id(aid)
         if not account:
             missing.append(aid)
             continue
+        prev_owner = account.get("owner_user_id")
         if accounts_repo.assign_account_owner(aid, owner_user_id):
             assigned += 1
+            if prev_owner is not None and int(prev_owner) != int(owner_user_id):
+                transferred.append(
+                    {"id": aid, "email": account.get("email") or ""}
+                )
 
+    transferred_note = (
+        f"，其中 {len(transferred)} 个从其他用户转移" if transferred else ""
+    )
     log_audit(
         "assign",
         "user",
         str(owner_user_id),
-        f"分配邮箱给 {target.get('username')}：成功={assigned}，缺失={len(missing)}",
+        f"分配邮箱给 {target.get('username')}：成功={assigned}，缺失={len(missing)}"
+        + (
+            "，转移=" + ",".join(t["email"] for t in transferred)
+            if transferred
+            else ""
+        ),
     )
     return jsonify(
         {
             "success": True,
-            "message": f"已分配 {assigned} 个邮箱给 {target.get('username')}",
+            "message": f"已分配 {assigned} 个邮箱给 {target.get('username')}{transferred_note}",
             "assigned": assigned,
             "missing_ids": missing,
+            "transferred": transferred,
         }
     )
 
@@ -284,14 +299,16 @@ def api_unassign_accounts() -> Any:
 @login_required
 @admin_required
 def api_list_unassigned_accounts() -> Any:
-    """列出未分配给任何用户（管理员全局）的账号，供分配选择。"""
-    accounts = accounts_repo.load_accounts(owner_user_id=None)
+    """分配选择器：返回全部账号并标注当前归属用户（修复已分配混入未分配的问题）。"""
+    accounts = accounts_repo.list_accounts_with_owner()
     result = [
         {
             "id": a["id"],
             "email": a["email"],
             "group_id": a.get("group_id"),
             "status": a.get("status", "active"),
+            "owner_user_id": a.get("owner_user_id"),
+            "owner_username": a.get("owner_username"),
         }
         for a in accounts
     ]

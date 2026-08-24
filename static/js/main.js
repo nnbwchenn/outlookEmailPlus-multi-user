@@ -644,6 +644,7 @@ function navigate(page) {
     if (page === "settings") loadSettings();
     if (page === "refresh-log") loadRefreshLogPage();
     if (page === "audit") loadAuditLogPage();
+    if (page === "activation") renderActivationPage();
 }
 
 function updateTopbar(page) {
@@ -660,6 +661,7 @@ function updateTopbar(page) {
         settings: ["系统设置", "配置系统参数"],
         users: ["用户管理", "管理成员账号与权限"],
         audit: ["审计日志", "系统操作记录"],
+        activation: ["激活码", "生成与兑换激活码"],
     };
     const t = titles[page] || [page, ""];
     if (titleEl) titleEl.textContent = translateAppTextLocal(t[0]);
@@ -673,15 +675,12 @@ function updateTopbar(page) {
                 : "";
             const isCompactMode = mailboxViewMode === "compact";
             const isAdminView = isAdminUser();
-            const redeemBtnHtml = `<button class="btn-inline ghost" onclick="showRedeemModal()">${translateAppTextLocal("激活码")}</button>`;
             actionsEl.innerHTML = isCompactMode
                 ? `
                         ${switcherHtml}
-                        ${redeemBtnHtml}
                     `
                 : `
                         ${switcherHtml}
-                        ${redeemBtnHtml}
                         ${isAdminView ? '<button class="btn-inline primary" onclick="showAddAccountModal()">＋ 添加账号</button>' : ""}
                         ${isAdminView ? '<button class="btn-inline ghost" onclick="showExportModal()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="emoji-svg"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>导出</button>' : ""}
                         ${isAdminView ? '<button class="btn-inline ghost" onclick="showRefreshModal()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="emoji-svg"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>全量刷新 Token</button>' : ""}
@@ -5034,11 +5033,15 @@ function updateBatchActionBar() {
         const countSpan = document.getElementById(config.countId);
         if (!bar || !countSpan) return;
 
+        // 批量操作（含刷新 Token/删除）仅管理员可用：成员端一律隐藏
+        if (typeof isAdminUser === "function" && !isAdminUser()) {
+            bar.style.display = "none";
+            return;
+        }
+
         if (selectedAccountIds.size > 0 && config.active) {
             bar.style.display = "flex";
-            countSpan.textContent = formatSelectedItemsLabel(
-                selectedAccountIds.size,
-            );
+            countSpan.textContent = String(selectedAccountIds.size);
         } else {
             bar.style.display = "none";
         }

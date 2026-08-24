@@ -1,4 +1,4 @@
-"""激活码控制器：管理员生成/管理 + 用户兑换"""
+"""激活码控制器：管理员生成/管理 + 用户兑换（分层约束：禁止导入 routes/services）"""
 
 from __future__ import annotations
 
@@ -57,6 +57,20 @@ def api_generate_codes() -> Any:
     if not (1 <= max_bindings <= 100):
         return build_error_response("INVALID_PARAM", "绑定邮箱数量需在 1-100 之间", status=400)
 
+    # 防超开：未兑换激活码占用额度 + 本次签发 ≤ 当前未分配邮箱数（一一对应）
+    summary = codes_repo.get_activation_summary()
+    remaining = summary["remaining_capacity"]
+    requested = count * max_bindings
+    if requested > remaining:
+        max_codes = remaining // max_bindings if max_bindings else 0
+        return build_error_response(
+            "ACTIVATION_CAPACITY_EXCEEDED",
+            f"超出可绑定额度：当前未分配邮箱 {summary['available_mailboxes']} 个，"
+            f"未兑换激活码已占额度 {summary['outstanding_quota']}，仅剩 {remaining} 个名额"
+            f"（每码绑 {max_bindings} 时最多还能生成 {max_codes} 个）",
+            status=400,
+        )
+
     user = get_current_user()
     if not user:
         return build_error_response("UNAUTHORIZED", "请先登录", status=401)
@@ -65,6 +79,13 @@ def api_generate_codes() -> Any:
     )
     log_audit("create", "activation_code", f"batch:{count}", f"生成 {count} 个激活码（每个可绑 {max_bindings} 个邮箱）")
     return jsonify({"success": True, "codes": codes, "max_bindings": max_bindings})
+
+
+@login_required
+@admin_required
+def api_activation_summary() -> Any:
+    """GET /api/admin/activation-codes/summary — 额度台账"""
+    return jsonify({"success": True, **codes_repo.get_activation_summary()})
 
 
 @login_required

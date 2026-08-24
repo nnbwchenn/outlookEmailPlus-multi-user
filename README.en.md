@@ -23,7 +23,7 @@ All other core capabilities are unchanged from upstream.
 ### Multi-User Mode (admin / member)
 
 - On first startup an `admin` account is created automatically (password from `LOGIN_PASSWORD`); admins create member accounts under "User Management"
-- **admin**: full functionality + user management + mailbox assignment/recall
+- **admin**: full functionality + user management + mailbox assignment/recall (the assignment picker lists all mailboxes annotated with their current owner and supports ownership transfer)
 - **member**:
   - Sees and operates only their own mailboxes (isolated at the database level via `owner_user_id`, not just hidden in the UI)
   - Overview dashboards and refresh stats cover only their assigned mailboxes
@@ -35,6 +35,7 @@ All other core capabilities are unchanged from upstream.
 ### Activation-Code Distribution
 
 - Admins generate codes in batches (1–200 per batch, each binding 1–100 mailboxes), with notes, enable/disable, and delete
+- **Anti-overissue quota ledger**: before issuance the system validates that "outstanding quota of unredeemed codes + this batch ≤ currently unassigned mailboxes", so codes that could never be redeemed can't be created; the ledger endpoint `GET /api/admin/activation-codes/summary` reports available mailboxes / outstanding quota / remaining capacity
 - A logged-in user redeems a code and the system atomically binds unassigned mailboxes to their account
 - Each code can be redeemed exactly once; failed redemptions are throttled (10/min) against brute-force guessing
 - A "My Activations" view lists the mailboxes bound via codes
@@ -45,7 +46,7 @@ All other core capabilities are unchanged from upstream.
 - **One-click verification-code extraction**: rule extraction + confidence gating + AI fallback; case preservation, hyphenated-code recognition, newest-email selection across folders; frontend button and external API share the same pipeline
 - **Mail pool & external API**: `X-API-Key` auth, `project_key`-scoped claiming, success reuse, invalid-token governance (unified `invalid_grant` classification), batch deactivate
 - **Browser extension** (Chrome/Edge MV3): claim → auto-extract code/link → complete/release without switching tabs
-- **Bulk operations**: batch fetch mail, tag/untag, move group, refresh tokens, delete
+- **Bulk operations**: batch fetch mail, select-all bulk actions, tag/untag, move group, refresh tokens, delete
 - **Notification channels**: Email (SMTP) / Telegram / Webhook side by side
 - **Overview dashboard**: Summary / Verification / External API / Mailbox Pool / Activity tabs
 - **OAuth Token tool**: get authorization link, exchange and import tokens (Method 1 / Method 2)

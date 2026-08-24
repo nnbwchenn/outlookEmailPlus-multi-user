@@ -12,10 +12,14 @@ All screenshots were taken against a demo environment with fake data — no real
 | Login | Dashboard |
 | --- | --- |
 | ![Login](img/preview-login.png) | ![Dashboard](img/preview-dashboard.png) |
-| **Accounts** | **Activation Codes** |
+| **Accounts (PC)** | **Activation Codes** |
 | ![Accounts](img/preview-mailbox.png) | ![Activation Codes](img/preview-activation.png) |
-| **User Management** | — |
-| ![User Management](img/preview-users.png) | — |
+| **User Management** | **Tablet · Accounts (834px)** |
+| ![User Management](img/preview-users.png) | ![Tablet · Accounts](img/preview-tablet-mailbox.png) |
+| **Mobile · Dashboard (390px)** | **Mobile · Accounts (390px)** |
+| ![Mobile · Dashboard](img/preview-mobile-dashboard.png) | ![Mobile · Accounts](img/preview-mobile-mailbox.png) |
+
+Responsive layout across desktop / tablet / mobile — on small screens the UI switches to a drill-down navigation flow.
 
 ---
 

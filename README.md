@@ -12,10 +12,14 @@
 | 登录 | 数据概览 |
 | --- | --- |
 | ![登录](img/preview-login.png) | ![数据概览](img/preview-dashboard.png) |
-| **账号管理** | **激活码分发** |
+| **账号管理（PC）** | **激活码分发** |
 | ![账号管理](img/preview-mailbox.png) | ![激活码](img/preview-activation.png) |
-| **用户管理** | — |
-| ![用户管理](img/preview-users.png) | — |
+| **用户管理** | **平板 · 账号管理（834px）** |
+| ![用户管理](img/preview-users.png) | ![平板·账号管理](img/preview-tablet-mailbox.png) |
+| **手机 · 数据概览（390px）** | **手机 · 账号管理（390px）** |
+| ![手机·数据概览](img/preview-mobile-dashboard.png) | ![手机·账号管理](img/preview-mobile-mailbox.png) |
+
+桌面 / 平板 / 手机三端自适应布局，移动端自动切换为下钻式逐层导航。
 
 ---
 

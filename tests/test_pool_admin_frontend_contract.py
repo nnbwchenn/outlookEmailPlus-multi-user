@@ -64,5 +64,7 @@ class PoolAdminUiRemovalTests(PoolAdminFrontendContractBase):
         ]
         for marker in forbidden:
             self.assertNotIn(marker, main_js + overview_js, f"客户端不应保留邮箱池逻辑: {marker}")
+
+
 if __name__ == "__main__":
     unittest.main()

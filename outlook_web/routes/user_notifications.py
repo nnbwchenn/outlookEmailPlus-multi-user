@@ -17,8 +17,14 @@ bp.add_url_rule("/polling", view_func=notifications_controller.api_update_my_pol
 bp.add_url_rule("/external-keys", view_func=notifications_controller.api_list_my_external_keys, methods=["GET"])
 bp.add_url_rule("/external-keys", view_func=notifications_controller.api_create_my_external_key, methods=["POST"])
 bp.add_url_rule("/external-keys/<int:key_id>", view_func=notifications_controller.api_update_my_external_key, methods=["PUT"])
-bp.add_url_rule("/external-keys/<int:key_id>", view_func=notifications_controller.api_delete_my_external_key, methods=["DELETE"])
-bp.add_url_rule("/external-keys/<int:key_id>/plaintext", view_func=notifications_controller.api_get_my_external_key_plaintext, methods=["GET"])
+bp.add_url_rule(
+    "/external-keys/<int:key_id>", view_func=notifications_controller.api_delete_my_external_key, methods=["DELETE"]
+)
+bp.add_url_rule(
+    "/external-keys/<int:key_id>/plaintext",
+    view_func=notifications_controller.api_get_my_external_key_plaintext,
+    methods=["GET"],
+)
 
 
 def create_blueprint():

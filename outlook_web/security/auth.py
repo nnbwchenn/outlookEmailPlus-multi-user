@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import secrets
 import time
+from collections import deque
 from functools import wraps
 
 from flask import g, jsonify, redirect, request, session, url_for
@@ -238,10 +239,10 @@ def _check_member_external_rate_limit(key_id: int, limit_per_minute: int) -> flo
     from collections import deque
 
     now = time.monotonic()
-    bucket = _MEMBER_EXTERNAL_RATE_BUCKETS.setdefault(int(key_id), deque())
+    bucket = _MEMBER_EXTERNAL_RATE_BUCKETS.setdefault(key_id, deque())
     while bucket and now - bucket[0] >= _MEMBER_RATE_WINDOW_SECONDS:
         bucket.popleft()
-    if len(bucket) >= max(1, int(limit_per_minute)):
+    if len(bucket) >= max(1, limit_per_minute):
         retry_after = _MEMBER_RATE_WINDOW_SECONDS - (now - bucket[0])
         return max(1.0, round(retry_after, 1))
     bucket.append(now)

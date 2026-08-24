@@ -378,7 +378,6 @@ class MemberSettingsTests(MultiUserBase):
             self.assertEqual(resp.status_code, 403)
 
 
-
 class MemberExternalKeyTests(MultiUserBase):
     """成员级对外 API Key：创建/启停/删除/归属隔离/管理员替换不影响"""
 

@@ -529,7 +529,7 @@ class JSContractTests(unittest.TestCase):
         """忽略 Banner 时清除 #app padding-top"""
         js = self._get_js()
         m = re.search(r"\s*function dismissVersionBanner\(\)", js)
-        block = js[m.start():] if m else ""
+        block = js[m.start() :] if m else ""
         self.assertTrue("paddingTop = ''" in block or 'paddingTop = ""' in block)
 
 

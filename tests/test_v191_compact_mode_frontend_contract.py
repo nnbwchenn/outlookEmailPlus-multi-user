@@ -72,7 +72,8 @@ class V191CompactModeFrontendContractTests(unittest.TestCase):
         compacted = " ".join(main_js.split())
         normalized_quotes = compacted.replace('"', "'")
         self.assertIn(
-            "let mailboxViewMode =", normalized_quotes,
+            "let mailboxViewMode =",
+            normalized_quotes,
         )
         self.assertIn("ol_mailbox_view_mode", normalized_quotes)
         self.assertIn("'standard'", normalized_quotes)

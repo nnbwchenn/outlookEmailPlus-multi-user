@@ -55,9 +55,7 @@ def _token_cache_get_token(key: str) -> str | None:
     return entry["access_token"] if entry else None
 
 
-def _token_cache_set(
-    client_id: str, access_token: str, refresh_token: str | None, scope: str | None = None
-) -> None:
+def _token_cache_set(client_id: str, access_token: str, refresh_token: str | None, scope: str | None = None) -> None:
     # 保存最新 refresh_token：微软会轮换 refresh_token，缓存旧值会在轮换后失效
     with _TOKEN_CACHE_LOCK:
         _TOKEN_CACHE[client_id] = {
@@ -77,7 +75,7 @@ def invalidate_graph_token_cache(cache_key: str | None = None) -> None:
             _TOKEN_CACHE.clear()
 
 
-def build_proxies(proxy_url: str) -> dict[str, str] | None:
+def build_proxies(proxy_url: str | None) -> dict[str, str] | None:
     """构建 requests 的 proxies 参数"""
     if not proxy_url:
         return None
@@ -247,10 +245,8 @@ def get_emails_graph(
 
         # 缓存令牌可能已被微软侧吊销/轮换：401 时失效缓存并强制刷新一次后重试
         if res.status_code == GRAPH_AUTH_EXPIRED_STATUS and token_result.get("_from_cache"):
-            invalidate_graph_token_cache(cache_key)
-            token_result = get_access_token_graph_result(
-                client_id, refresh_token, proxy_url, force_refresh=True
-            )
+            invalidate_graph_token_cache(_token_cache_key(str(client_id or ""), str(refresh_token or "")))
+            token_result = get_access_token_graph_result(client_id, refresh_token, proxy_url, force_refresh=True)
             if token_result.get("success"):
                 headers["Authorization"] = f"Bearer {token_result['access_token']}"
                 res = _GRAPH_SESSION.get(url, headers=headers, params=params, timeout=30, proxies=proxies)

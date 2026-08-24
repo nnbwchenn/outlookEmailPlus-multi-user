@@ -55,7 +55,6 @@ def _get_int_setting(key: str, default: int) -> int:
         return default
 
 
-
 # ==================== Service Worker 自愈清除 ====================
 # 历史部署（v0.8.x）注册过 Service Worker，现行代码已不再使用 SW。
 # 残留的旧 SW 会持续向受控页面供过期缓存（表现为白屏/加载旧 JS）。

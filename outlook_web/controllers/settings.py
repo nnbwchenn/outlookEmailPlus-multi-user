@@ -12,9 +12,9 @@ from outlook_web.audit import log_audit
 from outlook_web.db import get_db
 from outlook_web.errors import build_error_payload
 from outlook_web.repositories import external_api_keys as external_api_keys_repo
-from outlook_web.repositories.external_api_keys import ExternalApiKeyNameConflictError
 from outlook_web.repositories import settings as settings_repo
 from outlook_web.repositories import users as users_repo
+from outlook_web.repositories.external_api_keys import ExternalApiKeyNameConflictError
 from outlook_web.security.auth import admin_required, login_required
 from outlook_web.security.crypto import (
     decrypt_data,
@@ -516,7 +516,8 @@ def api_update_settings() -> Any:
             errors.append("external_api_keys 必须是数组")
         else:
             existing_keys = {
-                _coerce_int(item["id"], -1): item for item in external_api_keys_repo.list_external_api_keys(include_disabled=True, unowned_only=True)
+                _coerce_int(item["id"], -1): item
+                for item in external_api_keys_repo.list_external_api_keys(include_disabled=True, unowned_only=True)
             }
             normalized_items: list[dict[str, Any]] = []
             seen_names: set[str] = set()
@@ -577,6 +578,7 @@ def api_update_settings() -> Any:
                 )
 
             if not errors:
+
                 def _replace_items(normalized_items=normalized_items):
                     try:
                         return external_api_keys_repo.replace_external_api_keys(normalized_items, commit=False)

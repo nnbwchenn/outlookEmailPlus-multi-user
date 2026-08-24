@@ -108,15 +108,13 @@ def _hydrate_accounts(rows: list[sqlite3.Row], db: sqlite3.Connection) -> list[d
 def list_accounts_with_owner() -> list[dict]:
     """分配选择器专用：全部账号 + 当前归属用户名（未分配为 NULL）。"""
     db = get_db()
-    rows = db.execute(
-        """
+    rows = db.execute("""
         SELECT a.id, a.email, a.status, a.group_id,
                a.owner_user_id, u.username AS owner_username
         FROM accounts a
         LEFT JOIN users u ON u.id = a.owner_user_id
         ORDER BY a.email ASC
-        """
-    ).fetchall()
+        """).fetchall()
     return [dict(r) for r in rows]
 
 

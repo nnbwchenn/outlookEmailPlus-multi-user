@@ -167,9 +167,11 @@ def api_redeem_code() -> Any:
         code_text[:24],
         f"用户 {user['username']} 激活成功，绑定 {len(bound)} 个邮箱",
     )
-    return jsonify({
-        "success": True,
-        "bound_count": len(bound),
-        "bound": bound,
-        "message": f"激活成功，已绑定 {len(bound)} 个邮箱",
-    })
+    return jsonify(
+        {
+            "success": True,
+            "bound_count": len(bound),
+            "bound": bound,
+            "message": f"激活成功，已绑定 {len(bound)} 个邮箱",
+        }
+    )

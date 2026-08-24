@@ -7,10 +7,11 @@ from collections.abc import Iterable
 from datetime import datetime, timezone
 from typing import Any
 
-# 成员级 Key：owner_user_id 非空；管理员全局 Key：owner_user_id IS NULL
-
 from outlook_web.db import get_db
 from outlook_web.security.crypto import decrypt_data, encrypt_data
+
+# 成员级 Key：owner_user_id 非空；管理员全局 Key：owner_user_id IS NULL
+
 
 
 class ExternalApiKeyNameConflictError(RuntimeError):
@@ -254,14 +255,20 @@ def update_external_api_key(
                 ).fetchone()["api_key_encrypted"]
             ),
             _allowed_emails_json(existing["allowed_emails"] if allowed_emails is None else allowed_emails),
-            _coerce_int(_coerce_bool(
-                existing["pool_access"] if pool_access is None else pool_access,
-                bool(existing["pool_access"]),
-            ), 0),
-            _coerce_int(_coerce_bool(
-                existing["enabled"] if enabled is None else enabled,
-                bool(existing["enabled"]),
-            ), 1),
+            _coerce_int(
+                _coerce_bool(
+                    existing["pool_access"] if pool_access is None else pool_access,
+                    bool(existing["pool_access"]),
+                ),
+                0,
+            ),
+            _coerce_int(
+                _coerce_bool(
+                    existing["enabled"] if enabled is None else enabled,
+                    bool(existing["enabled"]),
+                ),
+                1,
+            ),
             _normalize_expires_at(existing["expires_at"] if expires_at is None else expires_at),
             _coerce_int(key_id, 0),
         ),
@@ -320,7 +327,9 @@ def replace_external_api_keys(items: list[dict[str, Any]], *, commit: bool = Tru
             allowed_emails=_parse_allowed_emails(allowed_emails) if allowed_emails is not None else existing["allowed_emails"],
             pool_access=pool_access,
             enabled=enabled,
-            expires_at=_normalize_expires_at(existing["expires_at"]) if raw_item.get("expires_at") in (None, "") else expires_at,
+            expires_at=(
+                _normalize_expires_at(existing["expires_at"]) if raw_item.get("expires_at") in (None, "") else expires_at
+            ),
             commit=False,
         )
 

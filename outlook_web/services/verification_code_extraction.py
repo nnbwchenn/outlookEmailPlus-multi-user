@@ -62,10 +62,34 @@ KEYWORD_WINDOW_RADIUS = 100
 
 # 常见非验证码字母数字词（含数字的技术词汇等），直接排除
 COMMON_NON_CODE_TOKENS = {
-    "HTML5", "CSS3", "UTF8", "BASE64", "IPV4", "IPV6", "COVID19",
-    "GPT3", "GPT4", "GPT5", "WIN10", "WIN11", "HTTP2", "HTTP3",
-    "OAUTH2", "WEB3", "SHA256", "SHA512", "X86", "USB30", "TYPEC",
-    "MD5", "CRC32", "PNG24", "H264", "H265", "OPUS", "MP3",
+    "HTML5",
+    "CSS3",
+    "UTF8",
+    "BASE64",
+    "IPV4",
+    "IPV6",
+    "COVID19",
+    "GPT3",
+    "GPT4",
+    "GPT5",
+    "WIN10",
+    "WIN11",
+    "HTTP2",
+    "HTTP3",
+    "OAUTH2",
+    "WEB3",
+    "SHA256",
+    "SHA512",
+    "X86",
+    "USB30",
+    "TYPEC",
+    "MD5",
+    "CRC32",
+    "PNG24",
+    "H264",
+    "H265",
+    "OPUS",
+    "MP3",
 }
 
 # 候选值紧邻其前的“标签”模式（如 “code:” “验证码是”），强结构信号
@@ -96,7 +120,7 @@ EMAIL_TRACKING_LINK_PATTERNS = (
     "awstrack.me",
     "protection.outlook.com",
     "safelinks",
-    "/l0/https",          # AWS 追踪包装路径特征
+    "/l0/https",  # AWS 追踪包装路径特征
     "click.track",
     "mailtrack",
     "canva.com/r/",
@@ -436,13 +460,13 @@ def _collect_scored_candidates(
         pos = match.start()
 
         line_span = next(((s, e) for s, e in spans if s <= pos < e), (0, len(text)))
-        line_text = text[line_span[0]:line_span[1]]
+        line_text = text[line_span[0] : line_span[1]]
         standalone = line_text.strip() == value
-        after_label = bool(LABEL_BEFORE_CODE_RE.search(text[line_span[0]:pos]))
+        after_label = bool(LABEL_BEFORE_CODE_RE.search(text[line_span[0] : pos]))
 
         in_window = False
         if use_keyword_windows:
-            window = text[max(0, pos - KEYWORD_WINDOW_RADIUS): min(len(text), pos + KEYWORD_WINDOW_RADIUS)]
+            window = text[max(0, pos - KEYWORD_WINDOW_RADIUS) : min(len(text), pos + KEYWORD_WINDOW_RADIUS)]
             window_lower = window.lower()
             in_window = any(k in window_lower for k in lowered_keywords)
             if require_keyword_window and not in_window:
@@ -571,11 +595,7 @@ def extract_links(email_content: str) -> list[str]:
         return []
 
     cleaned_links = [link.rstrip(".,;:!?)>'\"") for link in re.findall(LINK_PATTERN, email_content, re.IGNORECASE)]
-    cleaned_links = [
-        link
-        for link in cleaned_links
-        if not any(pat in link.lower() for pat in EMAIL_TRACKING_LINK_PATTERNS)
-    ]
+    cleaned_links = [link for link in cleaned_links if not any(pat in link.lower() for pat in EMAIL_TRACKING_LINK_PATTERNS)]
     seen: set[str] = set()
     unique_links: list[str] = []
     for link in cleaned_links:

@@ -58,8 +58,10 @@ class ExternalApiBaseTest(unittest.TestCase):
             from outlook_web.db import get_db
 
             db = get_db()
-            db.execute("UPDATE groups SET proxy_url = ? WHERE id = (SELECT group_id FROM accounts WHERE email = ?)",
-                       (proxy_url, email_addr))
+            db.execute(
+                "UPDATE groups SET proxy_url = ? WHERE id = (SELECT group_id FROM accounts WHERE email = ?)",
+                (proxy_url, email_addr),
+            )
             db.commit()
 
     def _insert_outlook_account(self, email_addr: str | None = None) -> str:

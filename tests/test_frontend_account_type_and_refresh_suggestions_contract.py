@@ -61,8 +61,8 @@ class FrontendAccountTypeContractTests(unittest.TestCase):
             '<span class="account-api-tag" title="${escapeHtml(translateAppTextLocal(\'收信通道\'))}">${acc.method || defaultMethodLabel}</span>',
             groups_js,
         )
-        tag_row_pos = groups_js.index('${acc.method || defaultMethodLabel}</span>')
-        provider_pos = groups_js.index('${providerTagHtml}', tag_row_pos)
+        tag_row_pos = groups_js.index("${acc.method || defaultMethodLabel}</span>")
+        provider_pos = groups_js.index("${providerTagHtml}", tag_row_pos)
         self.assertLess(tag_row_pos, provider_pos)  # Graph 标签在 Outlook 标签之前
 
     def test_group_refresh_error_button_passes_account_type_and_provider(self):

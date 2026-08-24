@@ -244,23 +244,15 @@ def api_assign_accounts() -> Any:
         if accounts_repo.assign_account_owner(aid, owner_user_id):
             assigned += 1
             if prev_owner is not None and int(prev_owner) != int(owner_user_id):
-                transferred.append(
-                    {"id": aid, "email": account.get("email") or ""}
-                )
+                transferred.append({"id": aid, "email": account.get("email") or ""})
 
-    transferred_note = (
-        f"，其中 {len(transferred)} 个从其他用户转移" if transferred else ""
-    )
+    transferred_note = f"，其中 {len(transferred)} 个从其他用户转移" if transferred else ""
     log_audit(
         "assign",
         "user",
         str(owner_user_id),
         f"分配邮箱给 {target.get('username')}：成功={assigned}，缺失={len(missing)}"
-        + (
-            "，转移=" + ",".join(t["email"] for t in transferred)
-            if transferred
-            else ""
-        ),
+        + ("，转移=" + ",".join(t["email"] for t in transferred) if transferred else ""),
     )
     return jsonify(
         {

@@ -70,8 +70,10 @@ class ExternalApiKeySettingsUITests(unittest.TestCase):
         _, html = self._get_text(client, "/")
         # pool_access 由后端 API 序列化保留（external_api_keys repo），前端不再消费
         import sys as _sys
+
         _sys.path.insert(0, ".")
         from outlook_web.repositories.external_api_keys import list_external_api_keys  # noqa: F401
+
         self.assertIn("Telegram 轮询间隔必须在 10-86400 秒之间", js)
         flat_html = " ".join(html.split())
         self.assertIn('id="telegramPollInterval" min="10" max="86400"', flat_html)

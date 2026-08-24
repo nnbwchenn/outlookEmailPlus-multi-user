@@ -33,7 +33,9 @@ def create_app(*, autostart_scheduler: bool | None = None):
         )
         from outlook_web.routes import (
             accounts,
-            activation_codes as activation_codes_routes,
+        )
+        from outlook_web.routes import activation_codes as activation_codes_routes
+        from outlook_web.routes import (
             audit,
             emails,
             external_pool,

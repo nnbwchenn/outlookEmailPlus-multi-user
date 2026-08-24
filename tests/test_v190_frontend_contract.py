@@ -312,7 +312,9 @@ class V190FrontendContractTests(unittest.TestCase):
         norm_main3 = " ".join(main_js.split()).replace('"', "'")
         flat_html = " ".join(index_html.split()).replace('"', "'")
         # 格式化后 String(...) 调用被拆行；压缩后应包含 parseIntegerSetting(data.settings.polling_count, 5) 且外层有 String(
-        self.assertIn("String( parseIntegerSetting(data.settings.polling_count, 5), )".replace(" ", ""), norm_main3.replace(" ", ""))
+        self.assertIn(
+            "String( parseIntegerSetting(data.settings.polling_count, 5), )".replace(" ", ""), norm_main3.replace(" ", "")
+        )
         self.assertIn("maxPollingCount = parseIntegerSetting(settings.polling_count, 5);", norm_main3)
         self.assertIn("applyPollingSettings(settings, { restart: true });", norm_main3)
         self.assertNotIn("data.settings.polling_count || '5'", norm_main3)
@@ -355,7 +357,7 @@ class V190FrontendContractTests(unittest.TestCase):
         self.assertIn("syncAccountPanelDensityIfVisible();", norm)
         self.assertIn("scheduleAccountPanelDensitySync();", norm)
         self.assertRegex(
-            norm.replace(', }', ' }'),
+            norm.replace(", }", " }"),
             r"window\.addEventListener\('resize', scheduleAccountPanelDensitySync, \{ passive: true \}\);",
         )
         self.assertIn("if (page === 'mailbox') {", norm)
@@ -378,7 +380,6 @@ class V190FrontendContractTests(unittest.TestCase):
         ):
             self.assertNotIn(marker, main_js)
             self.assertNotIn(marker, index_html)
-
 
     def test_account_edit_uses_conditional_outlook_credential_validation(self):
         client = self.app.test_client()

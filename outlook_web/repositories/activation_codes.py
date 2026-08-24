@@ -48,16 +48,14 @@ def get_activation_summary() -> dict[str, int]:
     """
     conn = get_db()
     conn.row_factory = sqlite3.Row
-    row = conn.execute(
-        """
+    row = conn.execute("""
         SELECT
             (SELECT COUNT(*) FROM accounts WHERE owner_user_id IS NULL) AS available_mailboxes,
             COALESCE((
                 SELECT SUM(max_bindings) FROM activation_codes
                 WHERE status = 'active' AND redeemed_by IS NULL
             ), 0) AS outstanding_quota
-        """
-    ).fetchone()
+        """).fetchone()
     available = int(row["available_mailboxes"])
     outstanding = int(row["outstanding_quota"])
     return {
@@ -70,25 +68,21 @@ def get_activation_summary() -> dict[str, int]:
 def get_code_by_text(code: str) -> dict[str, Any] | None:
     conn = get_db()
     conn.row_factory = sqlite3.Row
-    row = conn.execute(
-        "SELECT * FROM activation_codes WHERE code = ?", (str(code or "").strip().upper(),)
-    ).fetchone()
+    row = conn.execute("SELECT * FROM activation_codes WHERE code = ?", (str(code or "").strip().upper(),)).fetchone()
     return dict(row) if row else None
 
 
 def list_codes() -> list[dict[str, Any]]:
     conn = get_db()
     conn.row_factory = sqlite3.Row
-    rows = conn.execute(
-        """
+    rows = conn.execute("""
         SELECT c.*,
                COALESCE(u.username, '') AS redeemed_by_username,
                (SELECT COUNT(*) FROM activation_code_bindings b WHERE b.code_id = c.id) AS bound_count
         FROM activation_codes c
         LEFT JOIN users u ON u.id = c.redeemed_by
         ORDER BY c.id DESC
-        """
-    ).fetchall()
+        """).fetchall()
     return [dict(r) for r in rows]
 
 
@@ -97,9 +91,7 @@ def set_status(code_id: int, status: str) -> bool:
         return False
     try:
         conn = get_db()
-        cur = conn.execute(
-            "UPDATE activation_codes SET status = ? WHERE id = ?", (status, int(code_id))
-        )
+        cur = conn.execute("UPDATE activation_codes SET status = ? WHERE id = ?", (status, int(code_id)))
         conn.commit()
         return cur.rowcount > 0
     except sqlite3.Error:

@@ -492,11 +492,15 @@ class VerificationChannelRoutingLogChannelTests(unittest.TestCase):
             self.assertEqual(result.get("data", {}).get("verification_code"), "222222")
             self.assertTrue(mock_fetch_detail.call_count >= 1)
             # 并发预取会拉取全部候选详情；校验目标渠道的详情在调用集合中
-            called = [
-                (c.kwargs.get("channel"), c.kwargs.get("folder"))
-                for c in mock_fetch_detail.call_args_list
-            ]
-            self.assertIn(("graph_inbox", "inbox") if "graph_inbox" in str(mock_fetch_detail.call_args_list) else ("graph_junk", "junkemail"), called)
+            called = [(c.kwargs.get("channel"), c.kwargs.get("folder")) for c in mock_fetch_detail.call_args_list]
+            self.assertIn(
+                (
+                    ("graph_inbox", "inbox")
+                    if "graph_inbox" in str(mock_fetch_detail.call_args_list)
+                    else ("graph_junk", "junkemail")
+                ),
+                called,
+            )
             mock_imap_fetch.assert_not_called()
 
     def test_graph_inbox_newer_than_junk_wins_and_skips_imap(self):
@@ -579,10 +583,7 @@ class VerificationChannelRoutingLogChannelTests(unittest.TestCase):
             self.assertEqual(result.get("data", {}).get("verification_code"), "444444")
             self.assertTrue(mock_fetch_detail.call_count >= 1)
             # 并发预取：校验 inbox 渠道详情在调用集合中（顺序不再保证）
-            called = [
-                (c.kwargs.get("channel"), c.kwargs.get("folder"))
-                for c in mock_fetch_detail.call_args_list
-            ]
+            called = [(c.kwargs.get("channel"), c.kwargs.get("folder")) for c in mock_fetch_detail.call_args_list]
             self.assertIn(("graph_inbox", "inbox"), called)
             mock_imap_fetch.assert_not_called()
 

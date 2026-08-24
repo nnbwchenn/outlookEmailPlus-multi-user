@@ -9,14 +9,14 @@ A mailbox manager and verification-code extractor built for registration workflo
 
 All screenshots were taken against a demo environment with fake data — no real account information is included.
 
-| Login | Dashboard |
-| --- | --- |
-| ![Login](img/preview-login.png) | ![Dashboard](img/preview-dashboard.png) |
-| **Accounts (PC)** | **Activation Codes** |
-| ![Accounts](img/preview-mailbox.png) | ![Activation Codes](img/preview-activation.png) |
-| **User Management** | **Tablet · Accounts (834px)** |
-| ![User Management](img/preview-users.png) | ![Tablet · Accounts](img/preview-tablet-mailbox.png) |
-| **Mobile · Dashboard (390px)** | **Mobile · Accounts (390px)** |
+| Login                                                   | Dashboard                                            |
+| ------------------------------------------------------- | ---------------------------------------------------- |
+| ![Login](img/preview-login.png)                         | ![Dashboard](img/preview-dashboard.png)              |
+| **Accounts (PC)**                                       | **Activation Codes**                                 |
+| ![Accounts](img/preview-mailbox.png)                    | ![Activation Codes](img/preview-activation.png)      |
+| **User Management**                                     | **Tablet · Accounts (834px)**                        |
+| ![User Management](img/preview-users.png)               | ![Tablet · Accounts](img/preview-tablet-mailbox.png) |
+| **Mobile · Dashboard (390px)**                          | **Mobile · Accounts (390px)**                        |
 | ![Mobile · Dashboard](img/preview-mobile-dashboard.png) | ![Mobile · Accounts](img/preview-mobile-mailbox.png) |
 
 Responsive layout across desktop / tablet / mobile — on small screens the UI switches to a drill-down navigation flow.
@@ -25,12 +25,12 @@ Responsive layout across desktop / tablet / mobile — on small screens the UI s
 
 ## Relationship to Upstream
 
-| | Upstream | This Fork |
-| --- | --- | --- |
-| Login | Single password, single admin | Multi-user accounts (admin / member) |
-| Mailbox ownership | All owned by the admin | Mailboxes can be assigned to users; data isolated per user |
-| Mailbox distribution | — | Activation-code redemption / manual assignment by admin |
-| One-click update (Watchtower) | Supported | **Removed** |
+|                               | Upstream                      | This Fork                                                  |
+| ----------------------------- | ----------------------------- | ---------------------------------------------------------- |
+| Login                         | Single password, single admin | Multi-user accounts (admin / member)                       |
+| Mailbox ownership             | All owned by the admin        | Mailboxes can be assigned to users; data isolated per user |
+| Mailbox distribution          | —                             | Activation-code redemption / manual assignment by admin    |
+| One-click update (Watchtower) | Supported                     | **Removed**                                                |
 
 All other core capabilities are unchanged from upstream.
 
@@ -124,17 +124,17 @@ pytest tests/
 
 ## Common Environment Variables
 
-| Variable | Description |
-| --- | --- |
-| `SECRET_KEY` | Required; session security and sensitive-data encryption, must stay stable |
-| `LOGIN_PASSWORD` | Initial password; used to create the admin account on first start, then hashed in DB |
-| `DATABASE_PATH` | SQLite path, default `data/outlook_accounts.db` |
-| `PORT` / `HOST` | Web server bind address |
-| `SCHEDULER_AUTOSTART` | Whether background scheduler jobs start automatically |
-| `GUNICORN_WORKERS` / `GUNICORN_THREADS` / `GUNICORN_TIMEOUT` | Gunicorn concurrency settings |
-| `OAUTH_TOOL_ENABLED` | Enable the OAuth token tool, default `true` |
-| `OAUTH_CLIENT_ID` / `OAUTH_REDIRECT_URI` | Outlook OAuth app configuration |
-| `PROXY_FIX_ENABLED` / `TRUSTED_PROXIES` | ProxyFix middleware and trusted proxy list behind reverse proxies |
+| Variable                                                     | Description                                                                          |
+| ------------------------------------------------------------ | ------------------------------------------------------------------------------------ |
+| `SECRET_KEY`                                                 | Required; session security and sensitive-data encryption, must stay stable           |
+| `LOGIN_PASSWORD`                                             | Initial password; used to create the admin account on first start, then hashed in DB |
+| `DATABASE_PATH`                                              | SQLite path, default `data/outlook_accounts.db`                                      |
+| `PORT` / `HOST`                                              | Web server bind address                                                              |
+| `SCHEDULER_AUTOSTART`                                        | Whether background scheduler jobs start automatically                                |
+| `GUNICORN_WORKERS` / `GUNICORN_THREADS` / `GUNICORN_TIMEOUT` | Gunicorn concurrency settings                                                        |
+| `OAUTH_TOOL_ENABLED`                                         | Enable the OAuth token tool, default `true`                                          |
+| `OAUTH_CLIENT_ID` / `OAUTH_REDIRECT_URI`                     | Outlook OAuth app configuration                                                      |
+| `PROXY_FIX_ENABLED` / `TRUSTED_PROXIES`                      | ProxyFix middleware and trusted proxy list behind reverse proxies                    |
 
 ## External API and Mail Pool Integration
 

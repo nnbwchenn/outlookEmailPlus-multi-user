@@ -9,14 +9,14 @@
 
 以下截图均基于演示环境（假数据）拍摄，不含任何真实账号信息。
 
-| 登录 | 数据概览 |
-| --- | --- |
-| ![登录](img/preview-login.png) | ![数据概览](img/preview-dashboard.png) |
-| **账号管理（PC）** | **激活码分发** |
-| ![账号管理](img/preview-mailbox.png) | ![激活码](img/preview-activation.png) |
-| **用户管理** | **平板 · 账号管理（834px）** |
-| ![用户管理](img/preview-users.png) | ![平板·账号管理](img/preview-tablet-mailbox.png) |
-| **手机 · 数据概览（390px）** | **手机 · 账号管理（390px）** |
+| 登录                                               | 数据概览                                         |
+| -------------------------------------------------- | ------------------------------------------------ |
+| ![登录](img/preview-login.png)                     | ![数据概览](img/preview-dashboard.png)           |
+| **账号管理（PC）**                                 | **激活码分发**                                   |
+| ![账号管理](img/preview-mailbox.png)               | ![激活码](img/preview-activation.png)            |
+| **用户管理**                                       | **平板 · 账号管理（834px）**                     |
+| ![用户管理](img/preview-users.png)                 | ![平板·账号管理](img/preview-tablet-mailbox.png) |
+| **手机 · 数据概览（390px）**                       | **手机 · 账号管理（390px）**                     |
 | ![手机·数据概览](img/preview-mobile-dashboard.png) | ![手机·账号管理](img/preview-mobile-mailbox.png) |
 
 桌面 / 平板 / 手机三端自适应布局，移动端自动切换为下钻式逐层导航。
@@ -25,12 +25,12 @@
 
 ## 与原版的关系
 
-| | 原版 | 本 Fork |
-| --- | --- | --- |
-| 登录 | 单密码，单管理员 | 多用户账号体系（admin / member） |
-| 邮箱归属 | 全部属于管理员 | 邮箱可分配给用户，数据按用户隔离 |
-| 邮箱分发 | — | 激活码兑换 / 管理员手动分配 |
-| 一键更新（Watchtower） | 支持 | **已移除** |
+|                        | 原版             | 本 Fork                          |
+| ---------------------- | ---------------- | -------------------------------- |
+| 登录                   | 单密码，单管理员 | 多用户账号体系（admin / member） |
+| 邮箱归属               | 全部属于管理员   | 邮箱可分配给用户，数据按用户隔离 |
+| 邮箱分发               | —                | 激活码兑换 / 管理员手动分配      |
+| 一键更新（Watchtower） | 支持             | **已移除**                       |
 
 其余核心能力与原版保持一致。
 
@@ -124,17 +124,17 @@ pytest tests/
 
 ## 常用环境变量
 
-| 变量 | 说明 |
-| --- | --- |
-| `SECRET_KEY` | 必填，会话安全与敏感数据加密，必须稳定不变 |
-| `LOGIN_PASSWORD` | 初始登录密码；首次启动后创建 admin 使用，之后哈希存库 |
-| `DATABASE_PATH` | SQLite 路径，默认 `data/outlook_accounts.db` |
-| `PORT` / `HOST` | Web 服务监听地址 |
-| `SCHEDULER_AUTOSTART` | 后台调度任务是否自动启动 |
-| `GUNICORN_WORKERS` / `GUNICORN_THREADS` / `GUNICORN_TIMEOUT` | Gunicorn 并发配置 |
-| `OAUTH_TOOL_ENABLED` | 是否启用 OAuth Token 工具，默认 `true` |
-| `OAUTH_CLIENT_ID` / `OAUTH_REDIRECT_URI` | Outlook OAuth 应用配置 |
-| `PROXY_FIX_ENABLED` / `TRUSTED_PROXIES` | 反向代理场景下启用 ProxyFix 与可信代理列表 |
+| 变量                                                         | 说明                                                  |
+| ------------------------------------------------------------ | ----------------------------------------------------- |
+| `SECRET_KEY`                                                 | 必填，会话安全与敏感数据加密，必须稳定不变            |
+| `LOGIN_PASSWORD`                                             | 初始登录密码；首次启动后创建 admin 使用，之后哈希存库 |
+| `DATABASE_PATH`                                              | SQLite 路径，默认 `data/outlook_accounts.db`          |
+| `PORT` / `HOST`                                              | Web 服务监听地址                                      |
+| `SCHEDULER_AUTOSTART`                                        | 后台调度任务是否自动启动                              |
+| `GUNICORN_WORKERS` / `GUNICORN_THREADS` / `GUNICORN_TIMEOUT` | Gunicorn 并发配置                                     |
+| `OAUTH_TOOL_ENABLED`                                         | 是否启用 OAuth Token 工具，默认 `true`                |
+| `OAUTH_CLIENT_ID` / `OAUTH_REDIRECT_URI`                     | Outlook OAuth 应用配置                                |
+| `PROXY_FIX_ENABLED` / `TRUSTED_PROXIES`                      | 反向代理场景下启用 ProxyFix 与可信代理列表            |
 
 ## 外部 API 与邮箱池集成
 

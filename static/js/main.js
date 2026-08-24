@@ -2099,10 +2099,16 @@ async function loadMemberExternalKeys() {
         const banner = document.createElement("div");
         banner.style.cssText = `padding:10px 12px;border-radius:6px;margin-bottom:12px;font-size:0.82rem;${apiEnabled ? "background:var(--bg-secondary);color:var(--text-muted);" : "background:rgba(220,53,69,0.08);color:var(--clr-red, #dc3545);"}`;
         banner.textContent = apiEnabled
-            ? translateAppTextLocal(`对外 API 已开通（限流：${data.external_api_rate_limit || 60} 次/分钟/Key）`)
-            : translateAppTextLocal("对外 API 功能未开通，请联系管理员开通后使用");
+            ? translateAppTextLocal(
+                  `对外 API 已开通（限流：${data.external_api_rate_limit || 60} 次/分钟/Key）`,
+              )
+            : translateAppTextLocal(
+                  "对外 API 功能未开通，请联系管理员开通后使用",
+              );
         listEl.appendChild(banner);
-        const createBtn = document.querySelector('[onclick="showCreateMemberKeyModal()"]');
+        const createBtn = document.querySelector(
+            '[onclick="showCreateMemberKeyModal()"]',
+        );
         if (createBtn) createBtn.disabled = !apiEnabled;
 
         if (keys.length === 0) {
@@ -4182,7 +4188,10 @@ async function refreshAllAccounts() {
         const eventSource = new EventSource(
             "/api/accounts/trigger-scheduled-refresh?force=true",
         );
-        appendRefreshLog("EventStream 已连接 /trigger-scheduled-refresh", "system");
+        appendRefreshLog(
+            "EventStream 已连接 /trigger-scheduled-refresh",
+            "system",
+        );
         let totalCount = 0;
         let successCount = 0;
         let failedCount = 0;
@@ -4198,7 +4207,9 @@ async function refreshAllAccounts() {
                             ? `（间隔 ${data.delay_seconds} 秒）`
                             : "";
                     appendRefreshLog(
-                        translateAppTextLocal(`队列就绪：共 <strong>${totalCount}</strong> 个账号${delayInfo}`),
+                        translateAppTextLocal(
+                            `队列就绪：共 <strong>${totalCount}</strong> 个账号${delayInfo}`,
+                        ),
                         "system",
                     );
                     progressText.innerHTML = `${translateAppTextLocal("总共")} <strong>${totalCount}</strong> ${translateAppTextLocal("个账号")}${delayInfo}，${translateAppTextLocal("准备开始刷新...")}`;

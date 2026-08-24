@@ -5,6 +5,18 @@
 
 A mailbox manager and verification-code extractor built for registration workflows: batch inbox reading, one-click code extraction, mail-pool API, browser extension, push notifications — with multi-user isolation on top.
 
+## UI Preview
+
+All screenshots were taken against a demo environment with fake data — no real account information is included.
+
+| Login | Dashboard |
+| --- | --- |
+| ![Login](img/preview-login.png) | ![Dashboard](img/preview-dashboard.png) |
+| **Accounts** | **Activation Codes** |
+| ![Accounts](img/preview-mailbox.png) | ![Activation Codes](img/preview-activation.png) |
+| **User Management** | — |
+| ![User Management](img/preview-users.png) | — |
+
 ---
 
 ## Relationship to Upstream

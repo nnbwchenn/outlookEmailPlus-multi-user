@@ -2,7 +2,7 @@ name: Python Tests
 
 on:
   push:
-    branches: [ "main", "master" ]
+    branches: ["main", "master"]
     paths:
       - "**.py"
       - "pyproject.toml"
@@ -65,4 +65,3 @@ jobs:
         with:
           name: coverage-python-${{ matrix.python-version }}
           path: coverage.xml
-

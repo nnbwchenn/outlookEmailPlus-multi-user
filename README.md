@@ -5,6 +5,18 @@
 
 一个面向注册流程的 Outlook / IMAP 邮箱管理与验证码提取工具：批量收件、一键取码、邮箱池 API、浏览器扩展、通知推送 —— 并支持多用户隔离使用。
 
+## 界面预览
+
+以下截图均基于演示环境（假数据）拍摄，不含任何真实账号信息。
+
+| 登录 | 数据概览 |
+| --- | --- |
+| ![登录](img/preview-login.png) | ![数据概览](img/preview-dashboard.png) |
+| **账号管理** | **激活码分发** |
+| ![账号管理](img/preview-mailbox.png) | ![激活码](img/preview-activation.png) |
+| **用户管理** | — |
+| ![用户管理](img/preview-users.png) | — |
+
 ---
 
 ## 与原版的关系

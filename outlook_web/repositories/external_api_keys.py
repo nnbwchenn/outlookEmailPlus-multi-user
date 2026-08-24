@@ -13,7 +13,6 @@ from outlook_web.security.crypto import decrypt_data, encrypt_data
 # 成员级 Key：owner_user_id 非空；管理员全局 Key：owner_user_id IS NULL
 
 
-
 class ExternalApiKeyNameConflictError(RuntimeError):
     """Raised when the database rejects a duplicate API Key name."""
 
